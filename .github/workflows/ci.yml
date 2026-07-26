@@ -44,10 +44,16 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      # Host port 6380, not 6379: every Redis integration suite (packages/
+      # cache, apps/api's entitlement + health tests) pins the dev container's
+      # address redis://localhost:6380 by design — "never read from REDIS_URL
+      # in a test; a suite must not silently point at something else"
+      # (packages/cache/src/__tests__/test-support.ts). CI therefore
+      # reproduces the dev topology instead of asking the tests to move.
       redis:
         image: redis:7
         ports:
-          - 6379:6379
+          - 6380:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s
@@ -56,7 +62,7 @@ jobs:
 
     env:
       DATABASE_URL: postgres://eutectic:eutectic@localhost:5432/eutectic
-      REDIS_URL: redis://localhost:6379
+      REDIS_URL: redis://localhost:6380
 
     steps:
       - name: Check out eutectic-backend (this ref)
