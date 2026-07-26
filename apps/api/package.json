@@ -13,7 +13,9 @@
     "test": "pnpm run build && node --env-file-if-exists=../../.env --test \"dist/**/*.test.js\""
   },
   "dependencies": {
+    "@eutectic/cache": "workspace:*",
     "@eutectic/contracts": "workspace:*",
+    "@eutectic/db": "workspace:*",
     "fastify": "^5.2.1"
   }
 }

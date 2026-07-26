@@ -8,6 +8,14 @@
 export { buildApp, type BuildAppOptions } from "./app.js";
 
 export {
+  bustEntitlement,
+  ENTITLEMENT_CACHE_TTL_SECONDS,
+  FREE_PLAN_DEFAULTS,
+  resolveEntitlementCached,
+  type ResolvedEntitlement,
+} from "./entitlements.js";
+
+export {
   ApiFailure,
   errorEnvelope,
   isApiFailure,
