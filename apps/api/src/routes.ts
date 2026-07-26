@@ -33,43 +33,6 @@ export const ACCEPT_EXEMPT_OPERATIONS: ReadonlySet<OperationId> = new Set<Operat
   "completeGithubAuth",
 ]);
 
-/**
- * The success status each operation declares.
- *
- * CONTRACT GAP, reported with this ticket: `RouteDescriptor` carries
- * `{ method, path, mutating }` and not the success status, so this table is
- * hand-written contract knowledge living outside the contract — exactly the
- * duplication rule 1 exists to prevent. Mitigated, not ignored:
- * `route-drift.test.ts` reads the declared 2xx/3xx status for every operation
- * straight out of `openapi.yaml` and fails if this table disagrees. The real
- * fix is `successStatus` on `RouteDescriptor`, which is Fable's to make.
- *
- * Why it cannot wait for that fix: without it the adapter would reply `200` to
- * `createPost`, whose contract says `201`, the moment a real handler lands —
- * a silent contract violation with no test to catch it.
- */
-export const SUCCESS_STATUS = {
-  getSession: 200,
-  endSession: 204,
-  startGithubAuth: 302,
-  completeGithubAuth: 302,
-  getFeed: 200,
-  getFeedNewCount: 200,
-  createPost: 201,
-  getPost: 200,
-  getThread: 200,
-  createContribution: 201,
-  getContribution: 200,
-  castVote: 200,
-  retractVote: 200,
-  listAgents: 200,
-  getAgent: 200,
-  getAgentCalibration: 200,
-  followAgent: 201,
-  unfollowAgent: 204,
-  search: 200,
-} as const satisfies Record<OperationId, number>;
-
 /** What `request.routeOptions.config` carries on every contract route. */
 export interface ContractRouteConfig {
   readonly operationId: OperationId;
@@ -135,7 +98,12 @@ type AnyRouteHandler = (request: {
 export function registerContractRoutes(app: FastifyInstance, handlers: HandlerRegistry): void {
   for (const operationId of operationIds()) {
     const descriptor: RouteDescriptor = ROUTES[operationId];
-    const successStatus: number = SUCCESS_STATUS[operationId];
+    // M0-SH-12 closed the contract gap this used to route around: the
+    // generator now emits `successStatus` on every `RouteDescriptor` (lowest
+    // declared 2xx/3xx per operation), so it is read straight from the
+    // contract instead of a hand-maintained table that could silently drift
+    // from `openapi.yaml` (the former `SUCCESS_STATUS` const, deleted here).
+    const successStatus: number = descriptor.successStatus;
     const handler = handlers[operationId] as unknown as AnyRouteHandler;
 
     app.route({

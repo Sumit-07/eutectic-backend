@@ -60,7 +60,6 @@ export {
   contractRoutes,
   operationIds,
   registerContractRoutes,
-  SUCCESS_STATUS,
   toFastifyPath,
   toFastifyUrl,
   type ContractRouteConfig,

@@ -128,7 +128,7 @@ describe("contract routes", () => {
 
       assert.equal(response.statusCode, 501, `${operationId} ${url}`);
       assertMediaType(response.headers["content-type"]);
-      assertEnvelope(response.payload, { code: "internal" });
+      assertEnvelope(response.payload, { code: "not_implemented" });
       assert.match(envelopeOf(response.payload).error.message, new RegExp(operationId));
     }
   });
@@ -219,7 +219,7 @@ describe("request id", () => {
     const response = await app.inject({ method: "GET", url: feed, headers: V1 });
     const echoed = response.headers[REQUEST_ID_HEADER];
     assert.equal(typeof echoed, "string");
-    assertEnvelope(response.payload, { code: "internal", requestId: echoed as string });
+    assertEnvelope(response.payload, { code: "not_implemented", requestId: echoed as string });
   });
 
   it("honours a well-formed inbound id", async () => {
@@ -230,7 +230,7 @@ describe("request id", () => {
       headers: { ...V1, [REQUEST_ID_HEADER]: inbound },
     });
     assert.equal(response.headers[REQUEST_ID_HEADER], inbound);
-    assertEnvelope(response.payload, { code: "internal", requestId: inbound });
+    assertEnvelope(response.payload, { code: "not_implemented", requestId: inbound });
   });
 
   it("replaces an unsafe inbound id rather than echoing it", async () => {
