@@ -118,6 +118,18 @@ function withTracingMixin(logger: FastifyServerOptions["logger"]): FastifyServer
  * with them. Anything a framework throws that is not in this table is coerced
  * rather than passed through: a status the contract does not document is a
  * status a client has no code branch for.
+ *
+ * NO `501` ENTRY, decided in M0-BE-23: `openapi.yaml` documents no `501`
+ * response on any operation (`route-drift.test.ts` only requires `500` and
+ * `429` on every operation — see its "declares a 500 and a 429" test) — `501`
+ * is exclusively `notImplemented()`'s own stub status, not a status this
+ * framework-error coercion path is meant to produce. `toFailure()` above
+ * returns `error` unchanged via `isApiFailure(error)` before this map is ever
+ * consulted, so `ApiFailure(501, "not_implemented", ...)` never reaches
+ * `STATUS_TO_CODE` regardless. Adding `[501, "not_implemented"]` here would
+ * imply fastify itself might throw a bare `501` that needs coercing, which is
+ * not a case that exists today — this table only grows when a coerced (not
+ * self-declared) status needs one.
  */
 const STATUS_TO_CODE: ReadonlyMap<number, ErrorCode> = new Map<number, ErrorCode>([
   [400, "bad_request"],

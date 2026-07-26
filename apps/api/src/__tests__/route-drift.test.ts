@@ -26,7 +26,6 @@ import {
   API_PREFIX,
   contractRoutes,
   operationIds,
-  SUCCESS_STATUS,
   toFastifyUrl,
 } from "../index.js";
 import { scanOperations } from "./openapi-scan.js";
@@ -75,10 +74,19 @@ describe("openapi.yaml ↔ ROUTES", () => {
 });
 
 describe("openapi.yaml ↔ apps/api's tables", () => {
-  it("declares the success status SUCCESS_STATUS uses", () => {
-    // The contract gap this covers: RouteDescriptor carries no success status,
-    // so routes.ts hand-writes one per operation. This binds that table to the
-    // spec — 201 for createPost, 204 for endSession, 302 for the redirects.
+  it("agrees with ROUTES.successStatus on every operation (M0-SH-12, M0-BE-23)", () => {
+    // The hand-maintained `SUCCESS_STATUS` table this test used to bind to
+    // openapi.yaml is gone (M0-BE-23): `RouteDescriptor.successStatus` is now
+    // generator-derived straight from the contract (M0-SH-12), and
+    // `routes.ts` reads it directly. That retires the "hand table might drift
+    // from the spec" risk this test was written for — but not the test
+    // itself: `scanOperations()` below parses `openapi.yaml`'s raw YAML
+    // completely independently of `@eutectic/contracts`' own generator, so
+    // this is a genuine second-implementation cross-check (the same shape as
+    // the "mutating flag" test above), not circular busywork bouncing a
+    // generated value off itself — it still catches a generator bug or a
+    // stale, un-rebuilt `dist/`. 201 for createPost, 204 for endSession, 302
+    // for the redirects, etc.
     for (const operation of spec) {
       const declared = operation.statuses
         .map((status) => Number.parseInt(status, 10))
@@ -88,11 +96,8 @@ describe("openapi.yaml ↔ apps/api's tables", () => {
         1,
         `${operation.operationId} declares ${declared.length} success statuses`,
       );
-      assert.equal(
-        SUCCESS_STATUS[operation.operationId as keyof typeof SUCCESS_STATUS],
-        declared[0],
-        `${operation.operationId} success status`,
-      );
+      const descriptor = ROUTES[operation.operationId as keyof typeof ROUTES];
+      assert.equal(descriptor.successStatus, declared[0], `${operation.operationId} success status`);
     }
   });
 

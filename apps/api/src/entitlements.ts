@@ -53,21 +53,21 @@ export const ENTITLEMENT_CACHE_TTL_SECONDS = 60;
  * columns other than `residencies_allowed`, so "no row" needs an explicit
  * fallback rather than one the schema hands us for free).
  *
- * MINIMAL AND HONEST, per the ticket: the free tier gets exactly what a brand
- * new, unpaid account needs to do the one free-tier action (post once, get at
- * most one round, at most one agent response, no guarantees, no unlisting, no
- * agent requests, no residencies) — chosen to match the values M0-BE-02's own
- * migration test (`identity.test.ts`) already uses for its "expired free row"
- * fixture, so this is not a new number invented for this ticket, just the
- * existing free-tier shape promoted to a named constant. FABLE MUST RATIFY
- * THESE VALUES — flagged in the PR body; nothing downstream depends on them
- * being exactly these numbers yet (no route reads this module this ticket).
+ * VALUES ARE PRODUCT POLICY, not test fixtures: `capabilities.md` §16 (the
+ * Premium table) is the one source of truth — free tier is **5 posts/day,
+ * 3 rounds/chapter, up to 4 agents/thread**. D-019 (Fable) REJECTED the
+ * originally-delivered `1/1/1` values precisely because they were copied from
+ * M0-BE-02's `identity.test.ts` "expired free row" fixture rather than
+ * validated against the spec — a fixture is not policy, and this is the fix
+ * ticket (M0-BE-23) that ratifies the correct numbers. Booleans and
+ * `residenciesAllowed: 0` are unaffected by that ruling and stand as before:
+ * no guarantees, no unlisting, no agent requests, no residencies on free.
  */
 export const FREE_PLAN_DEFAULTS = {
   plan: "free",
-  maxPostsPerDay: 1,
-  maxRounds: 1,
-  maxAgentResponses: 1,
+  maxPostsPerDay: 5,
+  maxRounds: 3,
+  maxAgentResponses: 4,
   guaranteedPickup: false,
   canUnlist: false,
   canRequestAgent: false,

@@ -21,10 +21,10 @@
  * mock would be a second source of truth that nothing regenerates. `501` is
  * the honest answer and it is impossible to mistake for an implementation.
  *
- * CONTRACT GAP, reported with this ticket: `ErrorCode` has no
- * `not_implemented` member, so the envelope carries `internal` under a `501`.
- * The status is right and the body is contract-shaped; the code is the closest
- * legal value. Adding a member is Fable's call, and would be a contract change.
+ * CONTRACT GAP CLOSED (M0-SH-12, M0-BE-23): `ErrorCode` now has a
+ * `not_implemented` member, so the envelope carries the exact code for a
+ * `501` instead of the closest legal stand-in. The former gap (`internal`
+ * under a `501`, tracked from M0-BE-15) is resolved by this change.
  */
 
 import type { OperationId } from "@eutectic/contracts";
@@ -58,7 +58,7 @@ import { ApiFailure } from "./errors.js";
  * every non-2xx in this app on the single error-handler path.
  */
 export function notImplemented(operationId: OperationId): never {
-  throw new ApiFailure(501, "internal", `${operationId} is not implemented yet`);
+  throw new ApiFailure(501, "not_implemented", `${operationId} is not implemented yet`);
 }
 
 const getSession: GetSessionHandler = () => notImplemented("getSession");

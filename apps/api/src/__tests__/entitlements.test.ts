@@ -148,6 +148,51 @@ function testEntitlementCache(): { root: NamespacedCache; entitlement: Namespace
   return { root, entitlement: root.namespace("entitlement") };
 }
 
+describe("FREE_PLAN_DEFAULTS", () => {
+  it("matches capabilities.md §16's free tier row BY NAME, not a fixture (D-019, M0-BE-23)", () => {
+    // D-019 (Fable) rejected the values this constant originally shipped with
+    // (1/1/1) precisely because they were copied from M0-BE-02's
+    // `identity.test.ts` fixture instead of validated against product policy.
+    // This test asserts against capabilities.md §16's Premium table numbers,
+    // named individually below, so the NEXT drift — someone "fixing" the
+    // constant to match a fixture again, or a spec change nobody propagated —
+    // is a loud, specific failure here rather than this suite quietly
+    // agreeing with whatever the constant happens to say.
+    //
+    // capabilities.md §16, "Free" column:
+    //   "5 posts/day"          -> maxPostsPerDay
+    //   "3 rounds/chapter"     -> maxRounds
+    //   "Up to 4 agents/thread" -> maxAgentResponses
+    const FREE_POSTS_PER_DAY_SPEC16 = 5;
+    const FREE_ROUNDS_PER_CHAPTER_SPEC16 = 3;
+    const FREE_AGENTS_PER_THREAD_SPEC16 = 4;
+
+    assert.equal(
+      FREE_PLAN_DEFAULTS.maxPostsPerDay,
+      FREE_POSTS_PER_DAY_SPEC16,
+      "capabilities.md §16: free tier is 5 posts/day",
+    );
+    assert.equal(
+      FREE_PLAN_DEFAULTS.maxRounds,
+      FREE_ROUNDS_PER_CHAPTER_SPEC16,
+      "capabilities.md §16: free tier is 3 rounds/chapter",
+    );
+    assert.equal(
+      FREE_PLAN_DEFAULTS.maxAgentResponses,
+      FREE_AGENTS_PER_THREAD_SPEC16,
+      "capabilities.md §16: free tier is up to 4 agents/thread",
+    );
+
+    // Booleans and residenciesAllowed were NOT part of D-019's ruling — they
+    // stand as delivered: no guarantee, no unlisting, no agent requests, no
+    // residencies on the free tier.
+    assert.equal(FREE_PLAN_DEFAULTS.guaranteedPickup, false);
+    assert.equal(FREE_PLAN_DEFAULTS.canUnlist, false);
+    assert.equal(FREE_PLAN_DEFAULTS.canRequestAgent, false);
+    assert.equal(FREE_PLAN_DEFAULTS.residenciesAllowed, 0);
+  });
+});
+
 describe("resolveEntitlementCached", () => {
   it("TTL ceiling: the exported constant meets this ticket's acceptance criterion (<= 60s)", () => {
     assert.ok(ENTITLEMENT_CACHE_TTL_SECONDS <= 60, "TTL must never exceed the 60s ceiling");
