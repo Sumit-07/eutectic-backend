@@ -32,6 +32,7 @@
  * both deployables depend on, not in either of them.
  */
 
+import { context, propagation } from "@opentelemetry/api";
 import type { JSONValue, TransactionSql } from "postgres";
 
 import { resolveQueueSchema } from "./queue.js";
@@ -189,6 +190,76 @@ export interface JobOptions {
   readonly schema?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Trace propagation (M0-BE-20, system-design §13)
+// ---------------------------------------------------------------------------
+
+/**
+ * THE PROPAGATION MECHANISM.
+ *
+ * graphile-worker jobs carry only a payload column — there is no metadata
+ * channel alongside it — so the only place a trace id started at the HTTP
+ * request can ride into the queue is inside that same JSON payload. `withJob`
+ * injects it AUTOMATICALLY: it never takes a trace/span argument, and no call
+ * site anywhere in this codebase needs to change. Instead, it reads whatever
+ * OpenTelemetry span is active on the CALLER's ambient context
+ * (`propagation.inject(context.active(), ...)`) at the moment it runs, and, if
+ * one exists, writes a standard W3C `traceparent` string under this one
+ * reserved key.
+ *
+ * `TRACE_FIELD` is a value outside {@link JobPayloadMap}'s vocabulary on
+ * purpose — every payload interface stays exactly what its own ticket declared
+ * — so the wire shape actually committed is `payload & { _trace?: TraceCarrier
+ * }`, never surfaced to a handler's typed `payload` parameter.
+ * `apps/worker`'s task wrapper (`tracing.ts`) is the only reader of this key
+ * anywhere in the system: it strips it before the registered handler ever
+ * sees the object.
+ *
+ * OPTIONAL, ALWAYS. A caller with no active span — a maintenance script, a
+ * test that never registered a tracer provider, any enqueue that predates
+ * this ticket — gets a payload with no `_trace` key at all:
+ * `propagation.inject` on the default (unregistered) global propagator is a
+ * documented no-op, so `currentTraceCarrier()` returns `undefined` and the
+ * committed payload is byte-for-byte what it always was. Nothing about
+ * enqueueing requires a tracer to be running anywhere.
+ */
+export const TRACE_FIELD = "_trace" as const;
+
+/** The one field `_trace` ever carries: a W3C `traceparent` header value. */
+export interface TraceCarrier {
+  readonly traceparent: string;
+}
+
+/** The wire shape `withJob` actually commits: the caller's payload, plus the reserved trace key when a span was active. */
+export type TracedPayload<T> = T & { readonly [TRACE_FIELD]?: TraceCarrier };
+
+/**
+ * Split a raw job payload (as `apps/worker` reads it back off a job row) into
+ * the caller's own typed shape and the trace carrier, if any. The ONLY code
+ * that should call this is the worker-side task wrapper — application
+ * handlers receive the already-split `payload` and never see `_trace`.
+ */
+export function splitTraceCarrier<T extends object>(
+  raw: TracedPayload<T>,
+): { payload: T; trace: TraceCarrier | undefined } {
+  const { [TRACE_FIELD]: trace, ...rest } = raw;
+  return { payload: rest as T, trace };
+}
+
+/**
+ * The active span's W3C `traceparent`, via whatever propagator is globally
+ * registered — `undefined` when no span is active (including when no
+ * `NodeTracerProvider` has ever been registered in this process, which is the
+ * case for every existing test and for any caller that runs before
+ * `apps/api`'s `instrumentation.ts` starts tracing).
+ */
+function currentTraceCarrier(): TraceCarrier | undefined {
+  const carrier: Record<string, string> = {};
+  propagation.inject(context.active(), carrier);
+  const traceparent = carrier["traceparent"];
+  return typeof traceparent === "string" && traceparent.length > 0 ? { traceparent } : undefined;
+}
+
 /** What `add_job` gave back. Enough to log and to assert on; not the whole row. */
 export interface EnqueuedJob {
   /**
@@ -259,6 +330,12 @@ export async function withJob<N extends JobName>(
 ): Promise<EnqueuedJob> {
   const schema = resolveQueueSchema(opts.schema);
 
+  // See "THE PROPAGATION MECHANISM" above `TRACE_FIELD`: automatic, optional,
+  // and the only reason this function ever imports `@opentelemetry/api`.
+  const traceCarrier = currentTraceCarrier();
+  const wirePayload: object =
+    traceCarrier === undefined ? payload : { ...payload, [TRACE_FIELD]: traceCarrier };
+
   // `add_job` is called in the FROM clause rather than the select list. It
   // returns a whole `_private_jobs` composite, and
   // `SELECT (add_job(...)).id, (add_job(...)).run_at` would call the function
@@ -301,7 +378,7 @@ export async function withJob<N extends JobName>(
     SELECT j.id::text AS id, j.run_at, j.key AS job_key
     FROM ${tx(schema)}.add_job(
       identifier := ${jobName},
-      payload    := ${tx.json(asJsonValue(payload))}::json,
+      payload    := ${tx.json(asJsonValue(wirePayload))}::json,
       run_at     := ${opts.runAt ?? null},
       job_key    := ${opts.jobKey ?? null}
     ) AS j

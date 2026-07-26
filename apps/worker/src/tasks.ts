@@ -26,6 +26,7 @@ import type { JobName, JobPayloadMap } from "@eutectic/db";
 import type { JobHelpers, Task, TaskList } from "graphile-worker";
 
 import type { WorkerContext } from "./context.js";
+import { traced } from "./tracing.js";
 
 /**
  * Teach graphile-worker our payload types.
@@ -70,18 +71,24 @@ export function buildTaskRegistry(ctx: WorkerContext): TaskRegistry {
     // The real handler recomputes feed_entries and the derived counters for one
     // contribution; it lands with the projection ticket, and it will read
     // `ctx.sql`.
-    "projection.contribution": async (payload, helpers) => {
+    //
+    // Wrapped in `traced()` (M0-BE-20): strips the reserved `_trace` field
+    // `withJob` may have injected, runs inside a span linked to the enqueuing
+    // request's trace when there was one, and logs start/complete/fail with
+    // trace ids attached. The handler below is unaffected — its payload type
+    // and its body never mention tracing.
+    "projection.contribution": traced("projection.contribution", async (payload, helpers) => {
       stub(helpers, "projection.contribution", { contribution_id: payload.contribution_id });
-    },
+    }),
 
     // Extends the `events` partition runway. `events` has no DEFAULT partition
     // by design (migration 0011, Judgment 3), so a month with no partition is a
     // hard INSERT failure, not a slow query — this job is what keeps that from
     // happening. The real handler calls `events_ensure_partition()`; it lands
     // with the scheduler ticket.
-    "partition.ensure_ahead": async (_payload, helpers) => {
+    "partition.ensure_ahead": traced("partition.ensure_ahead", async (_payload, helpers) => {
       stub(helpers, "partition.ensure_ahead", {});
-    },
+    }),
   };
 }
 

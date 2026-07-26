@@ -13,7 +13,11 @@
     "test": "pnpm run build && node --env-file-if-exists=../../.env --test \"dist/**/*.test.js\""
   },
   "dependencies": {
+    "@eutectic/cache": "workspace:*",
     "@eutectic/contracts": "workspace:*",
+    "@eutectic/db": "workspace:*",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/sdk-trace-node": "^2.10.0",
     "fastify": "^5.2.1"
   }
 }

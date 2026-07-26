@@ -21,6 +21,14 @@ import * as schema from "./schema/index.js";
 export type Schema = typeof schema;
 export type Database = PostgresJsDatabase<Schema>;
 
+/**
+ * Re-exported so callers that need to hold or inject a raw pool handle — M0-BE-20's
+ * `/readyz`, which takes one via `buildApp`'s options rather than importing
+ * `postgres` directly — have a name for it without adding a second dependency
+ * on the driver package just to spell a type.
+ */
+export type { Sql } from "postgres";
+
 export interface PoolOptions {
   /** Connection string. Defaults to `process.env.DATABASE_URL`. */
   url?: string;

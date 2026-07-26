@@ -126,10 +126,12 @@ describe("ROUTES ↔ fastify", () => {
   });
 
   it("registers nothing outside the versioned prefix", () => {
-    // Operational endpoints (/healthz, /readyz — M0-BE-20) will live here and
-    // are legitimately outside the contract. Until they land the allowlist is
-    // empty, so nothing can appear un-noticed.
-    const allowed: ReadonlySet<string> = new Set<string>();
+    // Operational endpoints (/healthz, /readyz — M0-BE-20) live here and are
+    // legitimately outside the contract: liveness/readiness probes for an
+    // orchestrator, not client-facing operations (see `health.ts`). Nothing
+    // else may use this exemption — a third entry here is exactly the
+    // un-noticed drift this test exists to catch.
+    const allowed: ReadonlySet<string> = new Set<string>(["GET /healthz", "GET /readyz"]);
     const outside = app.registeredRoutes
       .filter((route) => !route.url.startsWith(`${API_PREFIX}/`))
       .map(key)

@@ -19,6 +19,10 @@ export {
 
 export { notImplemented, stubHandlers, type HandlerRegistry } from "./handlers.js";
 
+export { registerHealthRoutes, type HealthCheckOptions } from "./health.js";
+
+export { getTracer, SERVICE_NAME, startTracing, type StartTracingOptions } from "./instrumentation.js";
+
 export { REQUEST_ID_HEADER, REQUEST_ID_LOG_LABEL, sanitizeRequestId } from "./request-id.js";
 
 export {
@@ -32,5 +36,7 @@ export {
   type ContractRouteConfig,
   type RegisteredRoute,
 } from "./routes.js";
+
+export { installRequestTracing, tracingMixin } from "./tracing.js";
 
 export { acceptsApiMediaType, API_MEDIA_TYPE, API_PREFIX } from "./versioning.js";

@@ -8,11 +8,27 @@
  * the port is 4000 and the host is loopback, because binding 0.0.0.0 is a
  * deployment decision (D-006: everything is local until further notice) and
  * not something a default should make for us.
+ *
+ * `startTracing()` runs here, and only here (M0-BE-20) — never at import time
+ * of a library module. See `instrumentation.ts`'s doc comment. The real
+ * Postgres pool and Redis cache handle are opened here too and injected into
+ * `buildApp({ health })`, so `/readyz` in production exercises the real
+ * checks documented in `health.ts` — every other test that builds an app
+ * takes the "no handle injected" branch documented there on purpose.
  */
 
-import { buildApp } from "./app.js";
+import { createCache } from "@eutectic/cache";
+import { createPool } from "@eutectic/db";
 
-const app = buildApp();
+import { buildApp } from "./app.js";
+import { startTracing } from "./instrumentation.js";
+
+startTracing();
+
+const db = createPool();
+const cache = createCache();
+
+const app = buildApp({ health: { db, cache } });
 
 const port = Number.parseInt(process.env.API_PORT ?? "4000", 10);
 const host = process.env.API_HOST ?? "127.0.0.1";
@@ -22,15 +38,18 @@ const host = process.env.API_HOST ?? "127.0.0.1";
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, () => {
     app.log.info({ signal }, "shutting down");
-    void app.close().then(
-      () => {
-        process.exitCode = 0;
-      },
-      (error: unknown) => {
-        app.log.error({ err: error }, "shutdown failed");
-        process.exitCode = 1;
-      },
-    );
+    void app
+      .close()
+      .then(() => Promise.all([db.end(), cache.close()]))
+      .then(
+        () => {
+          process.exitCode = 0;
+        },
+        (error: unknown) => {
+          app.log.error({ err: error }, "shutdown failed");
+          process.exitCode = 1;
+        },
+      );
   });
 }
 
