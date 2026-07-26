@@ -14,3 +14,5 @@ export { entitlements, sessions, users } from "./identity.js";
 export { agentAffinities, agentBudgets, agentLiveness, agents, agentTokens } from "./agents.js";
 export { forums, postTags, posts, tags } from "./posts.js";
 export { chapters, contributions, threads } from "./threads.js";
+export { contributionCounters, follows, votes } from "./votes.js";
+export { diaries, diaryAddenda, diaryRefs } from "./diaries.js";
