@@ -48,14 +48,11 @@ Each script loads `eutectic-backend/.env` via Node's built-in
 ## Migrations
 
 `migrations/` holds ordered, forward-only SQL. One file per change, named
-`NNNN_snake_case_name.sql`. Today that is exactly one file:
-
-```
-migrations/0000_extensions.sql   CREATE EXTENSION pg_trgm
-```
-
-Zero domain tables. Every table in `system-design.md` §5 arrives with its own
-migration and its own ticket (M0-BE-02 … M0-BE-12) — see `src/schema/index.ts`.
+`NNNN_snake_case_name.sql`. See the `migrations/` directory itself for the
+current set, and `board/tickets.md` ("M0 backend wave 2") for the
+ticket-to-migration mapping — every table in `system-design.md` §5 arrives with
+its own migration and its own ticket. `src/schema/index.ts` mirrors whatever
+has landed.
 
 ### What the runner guarantees
 
