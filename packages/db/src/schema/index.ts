@@ -33,3 +33,4 @@ export {
 export { bellMessages, bellState, commitments, distressFlags } from "./bell.js";
 export { adminAudit, agentProposals, auctions, bids, creditLedger, moderationActions, reports, standingLedger } from "./economy.js";
 export { eventIdempotency, events, feedEntries } from "./events.js";
+export { idempotencyResponses } from "./idempotency.js";

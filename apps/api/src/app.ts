@@ -11,7 +11,9 @@
  *   1. request id   — honoured inbound, generated otherwise, echoed and logged
  *   2. Accept       — `application/vnd.staffroom.v1+json` or `406`
  *   3. errors       — one envelope, one exit, including 404s and body failures
- *   4. route binding — delegated to `routes.ts`, driven by the contract
+ *   4. idempotency  — `Idempotency-Key` on every mutating route (M0-BE-16),
+ *                     delegated to `idempotency.ts`
+ *   5. route binding — delegated to `routes.ts`, driven by the contract
  *
  * NODE TYPES, disclosed rather than assumed: this package declares no
  * `@types/node` (CLAUDE.md rule 12; D-010 defers the question to M0-SH-05).
@@ -34,6 +36,10 @@ import { ApiFailure, errorEnvelope, isApiFailure } from "./errors.js";
 import type { ErrorCode, ErrorDetail } from "./errors.js";
 import { stubHandlers } from "./handlers.js";
 import type { HandlerRegistry } from "./handlers.js";
+import { registerIdempotency } from "./idempotency.js";
+import type { IdempotencyTuning } from "./idempotency.js";
+import { createIdempotencyStore } from "./idempotency-store.js";
+import type { IdempotencyPool } from "./idempotency-store.js";
 import { REQUEST_ID_HEADER, REQUEST_ID_LOG_LABEL, sanitizeRequestId } from "./request-id.js";
 import { registerContractRoutes } from "./routes.js";
 import type { ContractRouteConfig, RegisteredRoute } from "./routes.js";
@@ -52,6 +58,21 @@ export interface BuildAppOptions {
    * can prove the adapter's success path without inventing a route.
    */
   readonly handlers?: HandlerRegistry;
+  /**
+   * The Postgres pool the `Idempotency-Key` store runs on (M0-BE-16).
+   *
+   * Injected rather than opened here, for the same reason handlers are: a test
+   * hands in a pool pinned to a throwaway schema, `main.ts` hands in the
+   * process pool, and this module owns no connection lifecycle.
+   *
+   * Omitting it is legal and means "no store": every read still works, and
+   * every MUTATING route fails closed with a `500`. Serving mutations without
+   * deduplication because a pool was forgotten is the one outcome this ticket
+   * exists to prevent, so it is not on the menu.
+   */
+  readonly pool?: IdempotencyPool;
+  /** Wait, poll and takeover windows for the idempotency middleware. Defaults are in `idempotency.ts`. */
+  readonly idempotency?: IdempotencyTuning;
 }
 
 /**
@@ -162,6 +183,17 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       .code(failure.status)
       .type(API_MEDIA_TYPE)
       .send(errorEnvelope(failure.code, failure.message, request.id, failure.details));
+  });
+
+  // ---------------------------------------------------------------------
+  // Idempotency (system-design §3)
+  // ---------------------------------------------------------------------
+  // Registered before the routes, not as a style preference: fastify snapshots
+  // an instance's hooks when each route is registered, so a hook added after
+  // `registerContractRoutes` would silently apply to nothing.
+  registerIdempotency(app, {
+    store: options.pool === undefined ? undefined : createIdempotencyStore(options.pool),
+    tuning: options.idempotency,
   });
 
   registerContractRoutes(app, options.handlers ?? stubHandlers);
