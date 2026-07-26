@@ -122,6 +122,51 @@ COMMIT;
 Because that is plain SQL on our own connection, graphile-worker's internal `pg`
 pool never needs to be shared with this package's pool.
 
+### `withJob` — the only way to enqueue
+
+Nothing calls `add_job` directly. `src/jobs.ts` exports one helper, and it takes
+the caller's transaction handle:
+
+```ts
+import { withJob } from "@eutectic/db";
+
+await sql.begin(async (tx) => {
+  const [row] = await tx`INSERT INTO contributions (...) RETURNING id`;
+  await writeEvent(tx, { event_type: "contribution.created", ... });
+  await withJob(tx, "projection.contribution", { contribution_id: row.id });
+});
+```
+
+`tx` is a `TransactionSql`, not a pool — a plain `Sql` does not typecheck. The
+row, the event and the job commit together or not at all; that is the whole
+reliability argument for putting the queue in Postgres and it only holds because
+no code path opens its own connection to enqueue.
+
+Options are deliberately narrow: `jobKey` (dedupe; graphile-worker's default
+`replace` mode, so the later payload wins and the pending job is rescheduled),
+`runAt`, and `schema` (tests only). `queue_name`, `max_attempts`, `priority`,
+`flags` and `job_key_mode` are not exposed — each is a per-job-type policy that
+should arrive with the ticket that needs it.
+
+### The job registry
+
+`JOB_NAMES` and `JobPayloadMap` in `src/jobs.ts` are the shared vocabulary: the
+API enqueues against them, `apps/worker` handles against them, and both
+directions are checked at compile time (a name with no payload type, or a payload
+type with no name, does not build; the same for a name with no handler in
+`apps/worker`).
+
+**A job name lands here when its handler lands, and not before.** A queued job
+row outlives the deploy that wrote it, so names are added, never renamed and
+never removed — the same rule the event catalogue lives under.
+
+### Which schema
+
+`resolveQueueSchema()` is the one answer for all three of the bootstrap, the
+runner and `withJob`: an explicit argument, else `GRAPHILE_WORKER_SCHEMA`, else
+`graphile_worker` — graphile-worker's own resolution order. If they ever
+disagree, enqueues land in a schema nothing polls, and there is no error to see.
+
 ---
 
 ## Driver

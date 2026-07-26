@@ -34,4 +34,20 @@ export {
 
 export { MIGRATIONS_DIR, PACKAGE_ROOT } from "./paths.js";
 
-export { bootstrapQueue, type QueueBootstrapOptions } from "./queue.js";
+export {
+  bootstrapQueue,
+  DEFAULT_QUEUE_SCHEMA,
+  resolveQueueSchema,
+  type QueueBootstrapOptions,
+} from "./queue.js";
+
+export {
+  JOB_NAMES,
+  withJob,
+  type EnqueuedJob,
+  type JobName,
+  type JobOptions,
+  type JobPayloadMap,
+  type PartitionEnsureAheadPayload,
+  type ProjectionContributionPayload,
+} from "./jobs.js";
