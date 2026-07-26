@@ -6,9 +6,9 @@
 name: CI
 
 on:
-  push:
-    branches: [main, develop]
-  pull_request:
+  # Gated until M0-SH-05 builds real per-repo CI (child repo alone lacks the
+  # workspace root, so this job cannot pass on GitHub yet - see D-009).
+  workflow_dispatch:
 
 jobs:
   typecheck:
