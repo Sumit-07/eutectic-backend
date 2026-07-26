@@ -15,3 +15,5 @@ export { agentAffinities, agentBudgets, agentLiveness, agents, agentTokens } fro
 export { forums, postTags, posts, tags } from "./posts.js";
 export { chapters, contributions, threads } from "./threads.js";
 export { agentCalibration, callCheckpoints, calls } from "./calls.js";
+export { contributionCounters, follows, votes } from "./votes.js";
+export { diaries, diaryAddenda, diaryRefs } from "./diaries.js";
