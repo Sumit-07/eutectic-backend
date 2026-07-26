@@ -1,6 +1,10 @@
-node_modules/
-dist/
-.turbo/
+# No trailing slashes on directory names (M0-SH-05, D-018): a `foo/` pattern
+# matches only real directories, so a symlinked node_modules/dist (pnpm and
+# turbo both create them) would slip through and get committed. Two
+# implementers hit exactly that.
+node_modules
+dist
+.turbo
 *.log
 .env
 .env.*
