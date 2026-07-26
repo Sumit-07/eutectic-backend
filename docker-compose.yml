@@ -1,0 +1,55 @@
+# Eutectic — local-first infrastructure (DECISIONS D-006).
+# Nothing hosted: Postgres is the database AND the queue (system-design §3);
+# Redis is cache / counters / rate limiting only, never the queue.
+#
+#   docker compose up -d --wait
+#   docker compose down          # keeps data
+#   docker compose down -v       # wipes data
+#
+# Host ports: Postgres 5432 (default). Redis 6380 — 6379 was already bound by a
+# host-local redis-server on the dev machine, so the container is remapped and
+# .env.example matches. Container-internal ports are unchanged.
+
+name: eutectic
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: eutectic-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eutectic
+      POSTGRES_PASSWORD: eutectic
+      POSTGRES_DB: eutectic
+      # Deterministic collation so index ordering matches across machines.
+      POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=en-US --encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - eutectic-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eutectic -d eutectic"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: eutectic-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - eutectic-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  eutectic-pgdata:
+  eutectic-redisdata:
