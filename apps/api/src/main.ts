@@ -13,15 +13,30 @@
  * `DATABASE_URL` and throws a named error if it is missing, so a misconfigured
  * process fails at boot with an actionable message rather than at the first
  * mutation with a `500` — which is the right trade for a store that every
- * mutating route depends on (M0-BE-16).
+ * mutating route depends on (M0-BE-16). The SAME pool backs `/readyz`'s
+ * Postgres check (M0-BE-20): readiness reports on the pool production
+ * actually mutates through, not a parallel one.
+ *
+ * `startTracing()` runs here, and only here (M0-BE-20) — never at import time
+ * of a library module. See `instrumentation.ts`'s doc comment. The Redis
+ * cache handle is opened here too and injected into `buildApp({ health })`,
+ * so `/readyz` in production exercises the real checks documented in
+ * `health.ts` — every other test that builds an app takes the "no handle
+ * injected" branch documented there on purpose.
  */
 
+import { createCache } from "@eutectic/cache";
 import { createPool } from "@eutectic/db";
 
 import { buildApp } from "./app.js";
+import { startTracing } from "./instrumentation.js";
+
+startTracing();
 
 const pool = createPool();
-const app = buildApp({ pool });
+const cache = createCache();
+
+const app = buildApp({ pool, health: { db: pool, cache } });
 
 const port = Number.parseInt(process.env.API_PORT ?? "4000", 10);
 const host = process.env.API_HOST ?? "127.0.0.1";
@@ -35,7 +50,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
     // request is still recording its idempotency claim would lose the record.
     void app
       .close()
-      .then(() => pool.end())
+      .then(() => Promise.all([pool.end(), cache.close()]))
       .then(
         () => {
           process.exitCode = 0;

@@ -34,6 +34,8 @@ import type { FastifyInstance, FastifyServerOptions } from "fastify";
 
 import { ApiFailure, errorEnvelope, isApiFailure } from "./errors.js";
 import type { ErrorCode, ErrorDetail } from "./errors.js";
+import { registerHealthRoutes } from "./health.js";
+import type { HealthCheckOptions } from "./health.js";
 import { stubHandlers } from "./handlers.js";
 import type { HandlerRegistry } from "./handlers.js";
 import { registerIdempotency } from "./idempotency.js";
@@ -43,13 +45,15 @@ import type { IdempotencyPool } from "./idempotency-store.js";
 import { REQUEST_ID_HEADER, REQUEST_ID_LOG_LABEL, sanitizeRequestId } from "./request-id.js";
 import { registerContractRoutes } from "./routes.js";
 import type { ContractRouteConfig, RegisteredRoute } from "./routes.js";
+import { installRequestTracing, tracingMixin } from "./tracing.js";
 import { acceptsApiMediaType, API_MEDIA_TYPE } from "./versioning.js";
 
 export interface BuildAppOptions {
   /**
    * Passed straight to fastify. Defaults to pino at `info` on stdout —
-   * structured JSON, request id on every line. Observability polish (trace
-   * ids, redaction, sampling) is M0-BE-20's, not this ticket's.
+   * structured JSON, request id on every line. `trace_id`/`span_id` are added
+   * on top of whatever is configured here (see `withTracingMixin` below) —
+   * M0-BE-20 extends this option rather than replacing it.
    */
   readonly logger?: FastifyServerOptions["logger"];
   /**
@@ -73,6 +77,40 @@ export interface BuildAppOptions {
   readonly pool?: IdempotencyPool;
   /** Wait, poll and takeover windows for the idempotency middleware. Defaults are in `idempotency.ts`. */
   readonly idempotency?: IdempotencyTuning;
+  /**
+   * `/readyz`'s dependency handles (M0-BE-20). Both optional — see
+   * `health.ts`'s doc comment for what an omitted one means. `main.ts` injects
+   * both in production; tests exercising anything other than readiness are
+   * free to omit them.
+   */
+  readonly health?: HealthCheckOptions;
+}
+
+/**
+ * Folds `tracingMixin()` into whatever `mixin` a caller's `logger` option
+ * already carries (a plain object; `true`/`false`/an existing pino instance
+ * pass straight through untouched — pino's own `mixin` composition point only
+ * applies to the object form). Never REPLACES a caller's mixin: both run, in
+ * caller-first order, and later keys win on collision — trace fields are
+ * namespaced (`trace_id`/`span_id`) precisely so a collision should not
+ * happen, but caller intent still wins if it somehow does.
+ */
+function withTracingMixin(logger: FastifyServerOptions["logger"]): FastifyServerOptions["logger"] {
+  if (logger === false) return false;
+  if (logger === undefined || logger === true) return { mixin: tracingMixin };
+
+  // A pre-constructed pino instance (has `.child`, not a plain options
+  // object) passes through untouched: composing a mixin into an
+  // already-built logger would mean wrapping every call site, which is out
+  // of this ticket's scope. A caller handing in a full instance already owns
+  // its own output shape.
+  if (typeof (logger as { child?: unknown }).child === "function") return logger;
+
+  const existingMixin = (logger as { mixin?: () => Record<string, unknown> }).mixin;
+  return {
+    ...logger,
+    mixin: () => ({ ...tracingMixin(), ...(existingMixin?.() ?? {}) }),
+  };
 }
 
 /**
@@ -95,7 +133,7 @@ const STATUS_TO_CODE: ReadonlyMap<number, ErrorCode> = new Map<number, ErrorCode
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const app = Fastify({
-    logger: options.logger ?? true,
+    logger: withTracingMixin(options.logger ?? true),
 
     // Fastify's own header handling is disabled so an inbound id passes
     // `sanitizeRequestId` first. An unchecked client value goes into a
@@ -129,6 +167,15 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       registeredRoutes.push({ method, url: route.url });
     }
   });
+
+  // ---------------------------------------------------------------------
+  // Request tracing (M0-BE-20, system-design §13): registered FIRST among
+  // `onRequest` hooks, so the request span it starts is the active OTel
+  // context for every hook and handler below it — including the request-id
+  // echo and Accept-negotiation hooks' own log lines, and any `withJob` call
+  // a route handler makes. See `tracing.ts`'s doc comment for the mechanism.
+  // ---------------------------------------------------------------------
+  installRequestTracing(app);
 
   // ---------------------------------------------------------------------
   // Request id: echoed on every response, error responses included
@@ -197,6 +244,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
 
   registerContractRoutes(app, options.handlers ?? stubHandlers);
+
+  // Outside `/v1`, outside the contract, exempt from Accept negotiation by
+  // construction (no `operationId` config — see the hook above). See
+  // `health.ts` and `route-drift.test.ts`'s allowlist.
+  registerHealthRoutes(app, options.health);
 
   return app;
 }

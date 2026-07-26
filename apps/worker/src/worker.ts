@@ -34,6 +34,7 @@ import { run } from "graphile-worker";
 import type { Runner } from "graphile-worker";
 
 import type { WorkerContext } from "./context.js";
+import { createWorkerLogger } from "./logger.js";
 import { buildTaskList } from "./tasks.js";
 
 export interface WorkerOptions {
@@ -88,6 +89,10 @@ export async function startWorker(options: WorkerOptions = {}): Promise<WorkerHa
       connectionString: url,
       schema,
       taskList: buildTaskList(ctx),
+      // Structured JSON, one line per graphile-worker log call, carrying job
+      // name/id (from its own `scope`) and trace ids (from `meta`, attached by
+      // `tracing.ts`'s wrapper) when present — M0-BE-20, system-design §13.
+      logger: createWorkerLogger(),
       concurrency: options.concurrency ?? 1,
       // Cron is a different deployable (SD §2: worker and scheduler are separate
       // processes). An empty list is passed explicitly so the runner never goes

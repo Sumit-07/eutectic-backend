@@ -46,6 +46,8 @@ export {
 
 export {
   JOB_NAMES,
+  splitTraceCarrier,
+  TRACE_FIELD,
   withJob,
   type EnqueuedJob,
   type JobName,
@@ -53,4 +55,6 @@ export {
   type JobPayloadMap,
   type PartitionEnsureAheadPayload,
   type ProjectionContributionPayload,
+  type TraceCarrier,
+  type TracedPayload,
 } from "./jobs.js";

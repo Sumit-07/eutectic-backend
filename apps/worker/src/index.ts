@@ -7,6 +7,12 @@
 
 export type { DatabasePool, WorkerContext } from "./context.js";
 
+export { getTracer, SERVICE_NAME, startTracing, type StartTracingOptions } from "./instrumentation.js";
+
+export { createWorkerLogger } from "./logger.js";
+
 export { buildTaskList, buildTaskRegistry, type TaskRegistry } from "./tasks.js";
+
+export { traced } from "./tracing.js";
 
 export { main, startWorker, type WorkerHandle, type WorkerOptions } from "./worker.js";

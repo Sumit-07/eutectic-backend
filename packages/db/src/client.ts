@@ -22,10 +22,12 @@ export type Schema = typeof schema;
 export type Database = PostgresJsDatabase<Schema>;
 
 /**
- * Re-exported so consumers (apps/api's M0-BE-18 cached entitlement wrapper is
- * the first) can type "the pool `createPool`/`getDb` hand back" without
- * declaring `postgres` as a direct dependency of their own — it is already
- * this package's dependency, and the pool IS this type.
+ * Re-exported so consumers can type "the pool `createPool`/`getDb` hand back"
+ * without declaring `postgres` as a direct dependency of their own — it is
+ * already this package's dependency, and the pool IS this type. First users:
+ * apps/api's M0-BE-18 cached entitlement wrapper and M0-BE-20's `/readyz`,
+ * which both take an injected pool via options rather than importing the
+ * driver package just to spell a type.
  */
 export type { Sql } from "postgres";
 

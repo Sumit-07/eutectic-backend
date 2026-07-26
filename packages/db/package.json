@@ -18,6 +18,7 @@
     "db:seed": "pnpm run build && node --env-file-if-exists=../../.env dist/scripts/seed.js"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
     "drizzle-orm": "^0.45.2",
     "graphile-worker": "^0.17.3",
     "postgres": "^3.4.9"

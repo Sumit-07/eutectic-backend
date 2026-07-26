@@ -87,6 +87,12 @@ describe("createCache — get/set/del", () => {
   });
 });
 
+describe("createCache — ping (M0-BE-20, /readyz)", () => {
+  it("resolves true against a reachable Redis", async () => {
+    assert.equal(await cache.ping(), true);
+  });
+});
+
 describe("createCache — namespace composition", () => {
   it("prefixes compose with ':' and do not collide with a sibling namespace", async () => {
     const a = cache.namespace(prefix).namespace("alpha");

@@ -108,6 +108,15 @@ export interface NamespacedCache {
 
 /** The root handle. Adds the one thing a namespaced view must not have: connection ownership. */
 export interface Cache extends NamespacedCache {
+  /**
+   * Liveness probe (M0-BE-20, `/readyz` — system-design §13). `true` if Redis
+   * answered `PING` within the command timeout, `false` on any outage, timeout
+   * or unexpected reply — same loss-tolerant contract as every other helper
+   * here, never throws. Deliberately a root-handle-only operation, not part of
+   * {@link NamespacedCache}: liveness is a property of the connection, not of a
+   * namespace, so `cache.namespace(...).ping` does not exist.
+   */
+  ping(): Promise<boolean>;
   /** Closes the underlying connection. Safe to call once; every helper above degrades to a miss/no-op afterwards, it does not throw. */
   close(): Promise<void>;
 }
@@ -224,6 +233,17 @@ export function createCache(options: CacheOptions = {}): Cache {
 
   return {
     ...base,
+    async ping(): Promise<boolean> {
+      try {
+        const reply = await withCommandTimeout(
+          redis.ping(),
+          options.commandTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS,
+        );
+        return reply === "PONG";
+      } catch {
+        return false;
+      }
+    },
     async close(): Promise<void> {
       try {
         // `quit()` sends a command over the wire and asks the server to

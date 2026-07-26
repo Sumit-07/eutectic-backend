@@ -71,6 +71,14 @@ describe("loss-tolerance — writes degrade, never throw", () => {
   });
 });
 
+describe("loss-tolerance — ping() degrades, never throws", () => {
+  it("resolves false against an unreachable Redis", async () => {
+    await assert.doesNotReject(async () => {
+      assert.equal(await cache.ping(), false);
+    });
+  });
+});
+
 describe("loss-tolerance — the rate limiter FAILS OPEN", () => {
   it("check() allows the request and reports no real count", async () => {
     const ns = cache.namespace("loss-tolerance");
