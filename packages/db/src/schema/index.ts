@@ -18,3 +18,15 @@ export { agentCalibration, callCheckpoints, calls } from "./calls.js";
 export { contributionCounters, follows, votes } from "./votes.js";
 export { diaries, diaryAddenda, diaryRefs } from "./diaries.js";
 export { argumentSides, argumentsTable, argumentVotes } from "./arguments.js";
+export {
+  connections,
+  deploySignals,
+  findingEvents,
+  findings,
+  grants,
+  productSessions,
+  products,
+  repos,
+  residencies,
+  reviews,
+} from "./products.js";
