@@ -1,26 +1,136 @@
-# Placeholder CI — decorative until GitHub remotes exist (D-006).
-# Runs typecheck across this repo's packages once it is part of the
-# eutectic pnpm workspace (workspace root: pnpm-workspace.yaml, tsconfig.base.json,
-# turbo.json — see operating-model.md §3, D-004). Local equivalent today:
-#   pnpm install && pnpm -r typecheck   (run from the workspace root)
+# M0-BE-24 (D-022) — real CI for eutectic-backend.
+#
+# Same shape as eutectic-shared's ci.yml (M0-SH-05): a lone clone of this repo
+# cannot `pnpm install` on its own (`workspace:*` deps and the lockfile's
+# importers span all three repos), so this job reconstructs the workspace —
+# this repo checked out at the PR ref, eutectic-shared and eutectic-frontend
+# checked out as siblings pinned to `develop`, the tracked workspace-root
+# mirror (owned by eutectic-shared) copied up one level, then a frozen
+# install. The frozen install is also where CLAUDE.md rule 12 is enforced: a
+# dependency change here (the @types/node devDependencies added alongside
+# this workflow) cannot go green until Fable lands the matching lockfile
+# mirror update in eutectic-shared first.
+#
+# Gates, filtered to this repo's packages: build, typecheck, test — the
+# rule-9 premium-neutrality guard (apps/api's
+# rank-score-entitlement-guard.test.ts) and the worker suite ride the test
+# gate, so both now run in CI, not just locally. A fresh Postgres runs every
+# migration (0000-0012) before the gates; a real Redis backs packages/cache's
+# and apps/api's genuine integration suites (never mocked around).
 name: CI
 
 on:
-  # Gated until M0-SH-05 builds real per-repo CI (child repo alone lacks the
-  # workspace root, so this job cannot pass on GitHub yet - see D-009).
+  push:
+    branches: [develop, main]
+  pull_request:
   workflow_dispatch:
 
 jobs:
-  typecheck:
+  backend:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: eutectic
+          POSTGRES_PASSWORD: eutectic
+          POSTGRES_DB: eutectic
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      # Host port 6380, not 6379: every Redis integration suite (packages/
+      # cache, apps/api's entitlement + health tests) pins the dev container's
+      # address redis://localhost:6380 by design — "never read from REDIS_URL
+      # in a test; a suite must not silently point at something else"
+      # (packages/cache/src/__tests__/test-support.ts). CI therefore
+      # reproduces the dev topology instead of asking the tests to move.
+      redis:
+        image: redis:7
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://eutectic:eutectic@localhost:5432/eutectic
+      REDIS_URL: redis://localhost:6380
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out eutectic-backend (this ref)
+        uses: actions/checkout@v4
+        with:
+          path: eutectic-backend
+
+      - name: Check out eutectic-shared @ develop (workspace sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: Sumit-07/eutectic-shared
+          ref: develop
+          path: eutectic-shared
+
+      - name: Check out eutectic-frontend @ develop (workspace sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: Sumit-07/eutectic-frontend
+          ref: develop
+          path: eutectic-frontend
+
+      - name: Synthesize the workspace root from the tracked mirror
+        run: |
+          cp eutectic-shared/workspace-root/package.json \
+             eutectic-shared/workspace-root/pnpm-workspace.yaml \
+             eutectic-shared/workspace-root/pnpm-lock.yaml \
+             eutectic-shared/workspace-root/tsconfig.base.json \
+             eutectic-shared/workspace-root/turbo.json \
+             eutectic-shared/workspace-root/.nvmrc \
+             .
+          touch .synthesized-from-mirror
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9.15.9
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 22.9.0
+          node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm -r typecheck
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install (frozen — drift between this repo and the lockfile mirror fails here)
+        run: pnpm install --frozen-lockfile
+
+      - name: Migrate a fresh database (0000-0012, plus the graphile_worker bootstrap)
+        run: pnpm --filter "@eutectic/db" run db:migrate
+
+      # The braced form `{./eutectic-backend/**}...` pulls in workspace
+      # dependencies: apps/api imports @eutectic/contracts, whose .d.ts come
+      # from its build output, and the sibling checkout provides source only.
+      # The braces matter — pnpm's `...` dependency-inclusion suffix only
+      # attaches to package-name or brace-wrapped directory selectors; on a
+      # bare path glob it is parsed as part of the glob and silently ignored.
+      # Typecheck/test stay filtered to backend packages alone — shared's own
+      # gates run in shared's CI.
+      - name: Build backend packages (and their workspace dependencies)
+        run: pnpm --filter "{./eutectic-backend/**}..." run build
+
+      - name: Typecheck backend packages
+        run: pnpm --filter "./eutectic-backend/**" run typecheck
+
+      # Suites run one package at a time. Not for table isolation — the two
+      # DB-touching suites already use throwaway schemas — but because five
+      # concurrent suites on a 2-vCPU runner starve graphile-worker's poll
+      # loop and spike connection counts against one Postgres, which is how
+      # the worker smoke test's 15s drain window timed out (run 30223546709)
+      # while staying green on dev hardware. Serializing removes the whole
+      # contention class; raising the timeout would only have hidden it.
+      - name: Test backend packages (rule-9 guard + worker suite run here, not just locally)
+        run: pnpm --workspace-concurrency=1 --filter "./eutectic-backend/**" run test
