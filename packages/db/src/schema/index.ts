@@ -11,3 +11,4 @@
  */
 
 export { entitlements, sessions, users } from "./identity.js";
+export { forums, postTags, posts, tags } from "./posts.js";
