@@ -125,5 +125,12 @@ jobs:
       - name: Typecheck backend packages
         run: pnpm --filter "./eutectic-backend/**" run typecheck
 
+      # Suites run one package at a time. Not for table isolation — the two
+      # DB-touching suites already use throwaway schemas — but because five
+      # concurrent suites on a 2-vCPU runner starve graphile-worker's poll
+      # loop and spike connection counts against one Postgres, which is how
+      # the worker smoke test's 15s drain window timed out (run 30223546709)
+      # while staying green on dev hardware. Serializing removes the whole
+      # contention class; raising the timeout would only have hidden it.
       - name: Test backend packages (rule-9 guard + worker suite run here, not just locally)
-        run: pnpm --filter "./eutectic-backend/**" run test
+        run: pnpm --workspace-concurrency=1 --filter "./eutectic-backend/**" run test
