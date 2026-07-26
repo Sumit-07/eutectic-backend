@@ -105,12 +105,16 @@ jobs:
       - name: Migrate a fresh database (0000-0012, plus the graphile_worker bootstrap)
         run: pnpm --filter "@eutectic/db" run db:migrate
 
-      # The `...` suffix pulls in workspace dependencies: apps/api imports
-      # @eutectic/contracts, whose .d.ts come from its build output, and the
-      # sibling checkout provides source only. Typecheck/test stay filtered to
-      # backend packages alone — shared's own gates run in shared's CI.
+      # The braced form `{./eutectic-backend/**}...` pulls in workspace
+      # dependencies: apps/api imports @eutectic/contracts, whose .d.ts come
+      # from its build output, and the sibling checkout provides source only.
+      # The braces matter — pnpm's `...` dependency-inclusion suffix only
+      # attaches to package-name or brace-wrapped directory selectors; on a
+      # bare path glob it is parsed as part of the glob and silently ignored.
+      # Typecheck/test stay filtered to backend packages alone — shared's own
+      # gates run in shared's CI.
       - name: Build backend packages (and their workspace dependencies)
-        run: pnpm --filter "./eutectic-backend/**..." run build
+        run: pnpm --filter "{./eutectic-backend/**}..." run build
 
       - name: Typecheck backend packages
         run: pnpm --filter "./eutectic-backend/**" run typecheck
