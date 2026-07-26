@@ -8,9 +8,12 @@
  */
 
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { randomUUID } from "node:crypto";
+import { after, before, describe, it } from "node:test";
 
 import { ROUTES } from "@eutectic/contracts";
+import { createPool, MIGRATIONS_DIR, runSqlMigrations } from "@eutectic/db";
+import type { FastifyInstance } from "fastify";
 
 import { buildApp } from "../app.js";
 import { stubHandlers } from "../handlers.js";
@@ -18,14 +21,46 @@ import {
   API_MEDIA_TYPE,
   API_PREFIX,
   acceptsApiMediaType,
+  IDEMPOTENCY_KEY_HEADER,
   operationIds,
   REQUEST_ID_HEADER,
   sanitizeRequestId,
   toFastifyUrl,
   type ErrorEnvelope,
+  type IdempotencyPool,
 } from "../index.js";
 
 const app = buildApp({ logger: false });
+
+/**
+ * A second app, with an idempotency store behind it (M0-BE-16).
+ *
+ * Every MUTATING route now needs one: a mutation with no store fails closed
+ * with a `500` rather than run undeduplicated. The pool is pinned to a
+ * throwaway schema, so this file still never touches the dev database — and
+ * the pool-less `app` above still serves every read, which is the point of
+ * making it optional.
+ */
+let mutatingApp: FastifyInstance;
+let pool: IdempotencyPool;
+let schema: string;
+
+/** The header the contract requires on every mutating operation. */
+const IDEMPOTENT = { [IDEMPOTENCY_KEY_HEADER]: "01J8Z6R2F3M4N5P6Q7R8S9T0V1" };
+
+before(async () => {
+  schema = `m0be15api_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  await runSqlMigrations({ dir: MIGRATIONS_DIR, schema, log: () => {} });
+  pool = createPool({ max: 4, extra: { connection: { search_path: `${schema}, public` } } });
+  mutatingApp = buildApp({ logger: false, pool });
+});
+
+after(async () => {
+  await pool.end();
+  const admin = createPool({ max: 1 });
+  await admin.unsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+  await admin.end();
+});
 
 /** Every request in this file sends the version header unless it is the subject. */
 const V1 = { accept: API_MEDIA_TYPE };
@@ -79,10 +114,16 @@ describe("contract routes", () => {
       // Path parameters get a syntactically plausible value; nothing reads it.
       const url = toFastifyUrl(descriptor.path).replace(/:([A-Za-z]+)/g, "placeholder");
 
-      const response = await app.inject({
+      // A mutating operation needs a key and a store to get past the
+      // idempotency middleware (M0-BE-16) and reach its stub at all. A key per
+      // operation: one key shared across seven operations is seven different
+      // requests, which is a `409` by design.
+      const response = await (descriptor.mutating ? mutatingApp : app).inject({
         method: descriptor.method.toUpperCase() as "GET",
         url,
-        headers: V1,
+        headers: descriptor.mutating
+          ? { ...V1, [IDEMPOTENCY_KEY_HEADER]: `surface-${operationId}` }
+          : V1,
       });
 
       assert.equal(response.statusCode, 501, `${operationId} ${url}`);
@@ -347,13 +388,14 @@ describe("handler adapter", () => {
   it("sends no body for an operation whose success status is 204", async () => {
     const bound = buildApp({
       logger: false,
+      pool,
       handlers: { ...stubHandlers, endSession: () => undefined },
     });
 
     const response = await bound.inject({
       method: "DELETE",
       url: `${API_PREFIX}/auth/session`,
-      headers: { ...V1, "idempotency-key": "01J8Z6R2F3M4N5P6Q7R8S9T0V1" },
+      headers: { ...V1, ...IDEMPOTENT },
     });
     assert.equal(response.statusCode, 204);
     assert.equal(response.payload, "");

@@ -19,6 +19,28 @@ export {
 
 export { notImplemented, stubHandlers, type HandlerRegistry } from "./handlers.js";
 
+export {
+  ANONYMOUS_SCOPE,
+  canonicalize,
+  fingerprintRequest,
+  IDEMPOTENCY_KEY_HEADER,
+  IDEMPOTENCY_KEY_MAX_LENGTH,
+  IDEMPOTENCY_KEY_MIN_LENGTH,
+  IDEMPOTENT_REPLAY_HEADER,
+  registerIdempotency,
+  type IdempotencyOptions,
+  type IdempotencyTuning,
+} from "./idempotency.js";
+
+export {
+  createIdempotencyStore,
+  type ClaimOutcome,
+  type ClaimRequest,
+  type IdempotencyPool,
+  type IdempotencyStore,
+  type RecordedResponse,
+} from "./idempotency-store.js";
+
 export { REQUEST_ID_HEADER, REQUEST_ID_LOG_LABEL, sanitizeRequestId } from "./request-id.js";
 
 export {

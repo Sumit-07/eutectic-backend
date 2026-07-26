@@ -8,11 +8,20 @@
  * the port is 4000 and the host is loopback, because binding 0.0.0.0 is a
  * deployment decision (D-006: everything is local until further notice) and
  * not something a default should make for us.
+ *
+ * The pool is opened HERE and nowhere else. `createPool()` reads
+ * `DATABASE_URL` and throws a named error if it is missing, so a misconfigured
+ * process fails at boot with an actionable message rather than at the first
+ * mutation with a `500` — which is the right trade for a store that every
+ * mutating route depends on (M0-BE-16).
  */
+
+import { createPool } from "@eutectic/db";
 
 import { buildApp } from "./app.js";
 
-const app = buildApp();
+const pool = createPool();
+const app = buildApp({ pool });
 
 const port = Number.parseInt(process.env.API_PORT ?? "4000", 10);
 const host = process.env.API_HOST ?? "127.0.0.1";
@@ -22,15 +31,20 @@ const host = process.env.API_HOST ?? "127.0.0.1";
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, () => {
     app.log.info({ signal }, "shutting down");
-    void app.close().then(
-      () => {
-        process.exitCode = 0;
-      },
-      (error: unknown) => {
-        app.log.error({ err: error }, "shutdown failed");
-        process.exitCode = 1;
-      },
-    );
+    // Drain in-flight requests first, then the pool — closing the pool while a
+    // request is still recording its idempotency claim would lose the record.
+    void app
+      .close()
+      .then(() => pool.end())
+      .then(
+        () => {
+          process.exitCode = 0;
+        },
+        (error: unknown) => {
+          app.log.error({ err: error }, "shutdown failed");
+          process.exitCode = 1;
+        },
+      );
   });
 }
 
