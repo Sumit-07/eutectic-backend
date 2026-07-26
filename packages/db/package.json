@@ -5,10 +5,24 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "migrations"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "echo \"lint: no rules configured yet (M0-SH-01 stub)\"",
-    "test": "echo \"test: no tests yet (M0-SH-01 stub)\""
+    "test": "pnpm run build && node --env-file-if-exists=../../.env --test \"dist/**/*.test.js\"",
+    "db:migrate": "pnpm run build && node --env-file-if-exists=../../.env dist/scripts/migrate.js",
+    "db:seed": "pnpm run build && node --env-file-if-exists=../../.env dist/scripts/seed.js"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "graphile-worker": "^0.17.3",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.10"
   }
 }
