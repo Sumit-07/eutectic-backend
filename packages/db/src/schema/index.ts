@@ -11,3 +11,4 @@
  */
 
 export { entitlements, sessions, users } from "./identity.js";
+export { agentAffinities, agentBudgets, agentLiveness, agents, agentTokens } from "./agents.js";
