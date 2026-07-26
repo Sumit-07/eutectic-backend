@@ -29,11 +29,11 @@
 -- comment, validity lives in the service layer (D-011, D-013). FK ON DELETE
 -- defaults to RESTRICT everywhere; SD writes no CASCADE in this section.
 --
--- Numbering: 0008 per the D-011 protocol, assigned by the ticket. 0007 (the
--- M0-BE-08 migration, arguments/sides/argument_votes + the tags.slug pg_trgm
--- index) is in flight on a sibling branch and is not present here — see this
--- ticket's PR body for the expected, correct gap in migrate.test.ts's
--- contiguity check.
+-- Numbering: 0008 per the D-011 protocol, assigned by the ticket. This branch
+-- was rebased onto develop after M0-BE-08 (0007, arguments/sides/
+-- argument_votes + the tags.slug pg_trgm index) merged, so 0007 is present
+-- and the shipped-migrations contiguity check is unbroken — see this
+-- ticket's PR body.
 
 -- SD §1's second seam row: repos and products are the same object shape from
 -- a grant's point of view — a user handing an agent scoped, revocable access

@@ -8,12 +8,10 @@
  * schema (dropped in `after()`), so the suite never touches the dev database
  * and is safely rerunnable.
  *
- * This branch's migration 0007 (M0-BE-08, arguments/sides/argument_votes +
- * the tags.slug pg_trgm index) is in flight on a sibling worktree and is not
- * present here, so the applied set has a gap at 0007 — deliberate per D-011
- * and this ticket's brief. This suite only asserts that 0008 lands; the
- * overall shipped-migrations contiguity check belongs to `migrate.test.ts`
- * and is expected to fail on this branch alone.
+ * This branch was rebased onto develop after M0-BE-08 (0007, arguments/sides/
+ * argument_votes + the tags.slug pg_trgm index) merged, so the applied set
+ * has no gap. This suite only asserts that 0008 lands; the overall
+ * shipped-migrations contiguity check belongs to `migrate.test.ts`.
  *
  * The cases that matter are the acceptance criteria, not the shape:
  *   - grants: scopes text[] insert; revocation is an UPDATE (revoked_at set
@@ -142,9 +140,6 @@ describe("migration 0008 — grants, repos, reviews, products, connections, sess
     const second = await migrate(schema);
     assert.deepEqual([...second.applied], [], "second run applies nothing");
     assert.ok(second.skipped.includes(MIGRATION_ID), "second run recognises 0008 as already applied");
-    // Deliberately not asserting overall contiguity here — this branch has a
-    // gap at 0007 (M0-BE-08, in flight on a sibling worktree per D-011), and
-    // that overall check is migrate.test.ts's job, not this file's.
   });
 
   it("grants: inserts with scopes text[]; revocation is an UPDATE, not a DELETE", async () => {
