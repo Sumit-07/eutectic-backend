@@ -147,14 +147,26 @@ describe("migration runner", () => {
 });
 
 describe("shipped migrations", () => {
-  it("contains only the 0000 bootstrap — domain tables belong to M0-BE-02 … M0-BE-12", async () => {
+  it("has sequences that are unique, contiguous, and ascending from 0000", async () => {
     const migrations = await discoverMigrations(MIGRATIONS_DIR);
-    assert.deepEqual(
-      migrations.map((m) => m.id),
-      ["0000_extensions"],
-    );
+    assert.ok(migrations.length > 0, "at least the 0000 bootstrap must exist");
 
-    const sqlText = await readFile(migrations[0]?.path ?? "", "utf8");
+    const sequences = migrations.map((m) => m.sequence);
+    const expected = sequences.map((_, i) => String(i).padStart(4, "0"));
+    assert.deepEqual(
+      sequences,
+      expected,
+      "migration sequences must run 0000, 0001, 0002, ... with no gaps or repeats " +
+        "(this test intentionally does not hard-code the file list — see M0-BE-02)",
+    );
+  });
+
+  it("0000 is bootstrap only — no domain table", async () => {
+    const migrations = await discoverMigrations(MIGRATIONS_DIR);
+    const bootstrap = migrations.find((m) => m.sequence === "0000");
+    assert.ok(bootstrap, "a 0000 migration must exist");
+
+    const sqlText = await readFile(bootstrap.path, "utf8");
     const statements = sqlText
       .split("\n")
       .filter((line) => !line.trimStart().startsWith("--"))
