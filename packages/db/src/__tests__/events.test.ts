@@ -95,7 +95,7 @@ async function insertEvent(
       ${input.subjectType ?? "contribution"},
       ${input.subjectId ?? randomUUID()},
       ${input.forumId ?? null},
-      ${JSON.stringify(input.payload ?? {})}::jsonb,
+      ${sql.json(input.payload ?? {})},
       ${input.idempotencyKey ?? null}
     )
     RETURNING id::text AS id, tableoid::regclass::text AS partition
@@ -172,6 +172,33 @@ describe("migration 0011 — events (partitioned), event_idempotency, feed_entri
       SELECT count(*)::int AS n FROM ${sql(schema)}.${sql("events")}
     `;
     assert.equal(count?.n, 3, "all three rows are visible through the parent");
+  });
+
+  it("stores payload as a genuine jsonb OBJECT via sql.json(...), never a JSON-encoded string scalar", async () => {
+    // The regression this guards: `${JSON.stringify(payload)}::jsonb` fails
+    // silently — postgres.js infers the parameter is `json` from the cast and
+    // JSON-encodes the already-encoded string, landing a jsonb STRING SCALAR
+    // instead of an object (see packages/db/src/jobs.ts's payload-binding
+    // comment, and packages/events/src/write-event.ts's insertEvent, for the
+    // same trap documented on the two real write paths). `sql.json(...)` binds
+    // the value once, correctly.
+    const schema = useScratchSchema();
+    await migrate(schema);
+
+    const payload = { from_state: "open", count: 3 };
+    const event = await insertEvent(schema, { occurredAt: "2026-07-12T00:00:00Z", payload });
+
+    const [row] = await sql<{ kind: string; value: unknown }[]>`
+      SELECT jsonb_typeof(payload) AS kind, payload AS value
+      FROM ${sql(schema)}.${sql("events")}
+      WHERE id = ${event.id}::bigint
+    `;
+    assert.equal(
+      row?.kind,
+      "object",
+      "payload must be a jsonb OBJECT, not the STRING SCALAR the double-encode bug produces",
+    );
+    assert.deepEqual(row?.value, payload, "the object round-trips intact, not as a re-escaped string");
   });
 
   it("rejects a row no partition covers, rather than pooling it (no DEFAULT partition)", async () => {
