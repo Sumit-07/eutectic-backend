@@ -1,0 +1,26 @@
+# Placeholder CI — decorative until GitHub remotes exist (D-006).
+# Runs typecheck across this repo's packages once it is part of the
+# eutectic pnpm workspace (workspace root: pnpm-workspace.yaml, tsconfig.base.json,
+# turbo.json — see operating-model.md §3, D-004). Local equivalent today:
+#   pnpm install && pnpm -r typecheck   (run from the workspace root)
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.9.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r typecheck
