@@ -17,6 +17,7 @@ export {
   type Database,
   type PoolOptions,
   type Schema,
+  type Sql,
 } from "./client.js";
 
 export { MissingEnvError, poolDefaults, requireDatabaseUrl } from "./env.js";
@@ -33,6 +34,8 @@ export {
 } from "./migrate.js";
 
 export { MIGRATIONS_DIR, PACKAGE_ROOT } from "./paths.js";
+
+export { resolveEntitlement, type EntitlementRow } from "./entitlements.js";
 
 export {
   bootstrapQueue,
