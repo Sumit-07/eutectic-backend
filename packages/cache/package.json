@@ -1,0 +1,20 @@
+{
+  "name": "@eutectic/cache",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo \"lint: no rules configured yet (M0-SH-01 stub)\"",
+    "test": "pnpm run build && node --env-file-if-exists=../../.env --test \"dist/**/*.test.js\""
+  },
+  "dependencies": {
+    "ioredis": "^5.11.1"
+  }
+}
