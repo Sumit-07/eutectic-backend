@@ -205,27 +205,27 @@ describe("migration 0013 — provenance, shadow, identity, settings, avatars", (
     assert.equal(row.selected_by, "coverage", "the value the insert wrote, not a default");
   });
 
-  it("refuses a contribution that does not say which routing pass picked the agent", async () => {
+  it("refuses an agent contribution that does not say which routing pass picked it", async () => {
     const schema = useScratchSchema();
     await migrate(schema);
     const agentId = await insertAgent(schema, "grouse");
 
-    // D-042 item 1: 0013 adds selected_by with DEFAULT 'coverage' to satisfy
-    // pre-routing rows and DROPs the default in the same migration. A turn that
-    // forgets to record how it was picked must fail here, loudly, rather than
-    // land a row claiming a coverage pick that never happened.
+    // D-043: no default, ever. A turn that forgets to record how it was picked
+    // must fail here, loudly, rather than land a row claiming a coverage pick
+    // that never happened. The constraint is conditional on author_type, so the
+    // omission surfaces as a CHECK violation rather than a not-null one.
     await assert.rejects(
       () => sql`
         INSERT INTO ${sql(schema)}.${sql("contributions")}
           (source_type, author_type, agent_id, body, idempotency_key)
         VALUES ('post', 'agent', ${agentId}, 'A contribution.', 'p01-selected-by-missing')
       `,
-      (error: { code?: string; column_name?: string }) => {
-        assert.equal(error.code, "23502", "a missing selected_by is a not-null violation");
-        assert.equal(error.column_name, "selected_by");
+      (error: { code?: string; constraint_name?: string }) => {
+        assert.equal(error.code, "23514", "an agent row with no routing pass fails a CHECK");
+        assert.equal(error.constraint_name, "contributions_selected_by_check");
         return true;
       },
-      "selected_by must have no default after 0013",
+      "an agent contribution must state its routing pass",
     );
 
     const remaining = await sql<{ n: number }[]>`
@@ -234,29 +234,81 @@ describe("migration 0013 — provenance, shadow, identity, settings, avatars", (
     assert.equal(remaining[0]?.n, 0, "nothing may be written by a rejected insert");
   });
 
-  it("constrains selected_by to the D-042 vocabulary and rejects the directive's stale draft values", async () => {
+  it("records a human contribution with selected_by NULL, and refuses one claiming a routing pass", async () => {
     const schema = useScratchSchema();
     await migrate(schema);
-    const agentId = await insertAgent(schema, "sprout");
+    const userId = await insertUser(schema, 5301, "reader-d043");
 
-    // Every routing eval groups by this column, so an off-vocabulary value is a
-    // silently wrong measurement rather than a bad row. D-042 puts a CHECK here
-    // deliberately, overriding D-013 for this one column.
-    for (const rejected of ["scored", "floor", "Coverage", ""]) {
+    // D-043: the vocabulary names AGENT routing passes. A human's reply was
+    // routed by nobody, so NULL is not a gap — it is the true value, and the
+    // only accepted one. Without this, every eval grouping by the column would
+    // count human replies as coverage picks.
+    await sql`
+      INSERT INTO ${sql(schema)}.${sql("contributions")}
+        (source_type, author_type, user_id, body, idempotency_key)
+      VALUES ('post', 'user', ${userId}, 'A human reply.', 'p01-human-null')
+    `;
+
+    const [human] = await sql<{ selected_by: string | null }[]>`
+      SELECT selected_by FROM ${sql(schema)}.${sql("contributions")}
+      WHERE idempotency_key = 'p01-human-null'
+    `;
+    assert.equal(human?.selected_by, null, "a human row is honestly unrouted");
+
+    for (const claimed of ["coverage", "discretionary", "exploration"]) {
       await assert.rejects(
         () => sql`
           INSERT INTO ${sql(schema)}.${sql("contributions")}
-            (source_type, author_type, agent_id, body, idempotency_key, selected_by)
-          VALUES ('post', 'agent', ${agentId}, 'A contribution.',
-                  ${`p01-selected-by-bad-${rejected}`}, ${rejected})
+            (source_type, author_type, user_id, body, idempotency_key, selected_by)
+          VALUES ('post', 'user', ${userId}, 'A human reply.',
+                  ${`p01-human-claims-${claimed}`}, ${claimed})
         `,
         (error: { code?: string; constraint_name?: string }) => {
-          assert.equal(error.code, "23514", `'${rejected}' must fail a CHECK, not slip through`);
+          assert.equal(error.code, "23514", `a human row must not claim '${claimed}'`);
           assert.equal(error.constraint_name, "contributions_selected_by_check");
           return true;
         },
-        `selected_by must reject '${rejected}'`,
+        `a human contribution must not claim the '${claimed}' pass`,
       );
+    }
+
+    const routed = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM ${sql(schema)}.${sql("contributions")}
+      WHERE selected_by IS NOT NULL
+    `;
+    assert.equal(routed[0]?.n, 0, "non-null selected_by means routed — no author_type filter needed");
+  });
+
+  it("constrains selected_by to the D-033 vocabulary and rejects the directive's stale draft values", async () => {
+    const schema = useScratchSchema();
+    await migrate(schema);
+    const agentId = await insertAgent(schema, "sprout");
+    const userId = await insertUser(schema, 5302, "reader-vocab");
+
+    // Every routing eval groups by this column, so an off-vocabulary value is a
+    // silently wrong measurement rather than a bad row. D-042/D-043 put a CHECK
+    // here deliberately, overriding D-013 for this one column — and it holds for
+    // either author type.
+    for (const rejected of ["scored", "floor", "Coverage", ""]) {
+      for (const author of ["agent", "user"] as const) {
+        await assert.rejects(
+          () => sql`
+            INSERT INTO ${sql(schema)}.${sql("contributions")}
+              (source_type, author_type, agent_id, user_id, body, idempotency_key, selected_by)
+            VALUES ('post', ${author},
+                    ${author === "agent" ? agentId : null},
+                    ${author === "agent" ? null : userId},
+                    'A contribution.',
+                    ${`p01-selected-by-bad-${author}-${rejected}`}, ${rejected})
+          `,
+          (error: { code?: string; constraint_name?: string }) => {
+            assert.equal(error.code, "23514", `'${rejected}' must fail a CHECK, not slip through`);
+            assert.equal(error.constraint_name, "contributions_selected_by_check");
+            return true;
+          },
+          `selected_by must reject '${rejected}' on a ${author} row`,
+        );
+      }
     }
 
     for (const accepted of ["coverage", "discretionary", "exploration"]) {
@@ -399,6 +451,43 @@ describe("migration 0013 — provenance, shadow, identity, settings, avatars", (
       SELECT avatar_seed FROM ${sql(schema)}.${sql("agents")} WHERE slug = 'vellum'
     `;
     assert.equal(agents[0]?.avatar_seed, "vellum", "an existing agent's seed backfills to its slug");
+  });
+
+  it("backfills selected_by for pre-routing agent rows and leaves pre-existing human rows NULL", async () => {
+    const schema = useScratchSchema();
+    await migrateThrough(schema, "0012");
+
+    const agentId = await insertAgent(schema, "marguerite");
+    const userId = await insertUser(schema, 3104, "octocat");
+    await sql`
+      INSERT INTO ${sql(schema)}.${sql("contributions")}
+        (source_type, author_type, agent_id, body, idempotency_key)
+      VALUES ('post', 'agent', ${agentId}, 'Written before routing existed.', 'p01-pre-agent')
+    `;
+    await sql`
+      INSERT INTO ${sql(schema)}.${sql("contributions")}
+        (source_type, author_type, user_id, body, idempotency_key)
+      VALUES ('post', 'user', ${userId}, 'Also written before routing existed.', 'p01-pre-human')
+    `;
+
+    // The backfill has to run BEFORE the constraint is added, or 0013 fails to
+    // apply to any database that already holds agent contributions — which is
+    // every one of them. 'coverage' is the honest reading of a pre-routing pick:
+    // it is the pass that replaced the single-pass scorer those rows came from.
+    await migrate(schema);
+
+    const rows = await sql<{ idempotency_key: string; selected_by: string | null }[]>`
+      SELECT idempotency_key, selected_by FROM ${sql(schema)}.${sql("contributions")}
+      ORDER BY idempotency_key
+    `;
+    assert.deepEqual(
+      rows.map((r) => [r.idempotency_key, r.selected_by]),
+      [
+        ["p01-pre-agent", "coverage"],
+        ["p01-pre-human", null],
+      ],
+      "D-043: pre-routing agent rows backfill, human rows stay honestly unrouted",
+    );
   });
 
   it("compresses pre-existing affinity weights into 0.7–1.3 and defaults new rows to 1.0", async () => {

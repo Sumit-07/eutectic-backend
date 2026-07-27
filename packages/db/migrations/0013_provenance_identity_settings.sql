@@ -10,9 +10,9 @@
 -- already taken by `idempotency_responses` before the directive was written.
 --
 -- Additive only: ADD COLUMN IF NOT EXISTS / CREATE TABLE IF NOT EXISTS /
--- CREATE INDEX IF NOT EXISTS, one DEFAULT change, and two one-shot backfill
--- UPDATEs. Nothing is dropped, renamed or narrowed, so this is not a
--- destructive migration (CLAUDE.md rule 5, §6 "Destructive").
+-- CREATE INDEX IF NOT EXISTS, one DEFAULT change, one added CHECK, and three
+-- one-shot backfill UPDATEs. Nothing is dropped, renamed or narrowed, so this
+-- is not a destructive migration (CLAUDE.md rule 5, §6 "Destructive").
 --
 -- **Forward-only. There is deliberately no `0013_down.sql`** — D-038(a)
 -- resolved the directive's "0012_down.sql exists and is tested" acceptance item
@@ -22,7 +22,9 @@
 -- Conventions (SD §5 preamble, D-013): `created_at timestamptz NOT NULL DEFAULT
 -- now()` on every new table; `updated_at` only where a row mutates in place; no
 -- CHECK constraints on enum-like text — the known values are named in a comment
--- and validity lives in the service layer; indexes are named explicitly. The
+-- and validity lives in the service layer, with exactly one exception,
+-- `selected_by`, ruled by D-042/D-043 (see RULING 2); indexes are named
+-- explicitly. The
 -- directive writes three of its indexes unnamed (`CREATE INDEX ON t (...)`);
 -- they are given here the exact names Postgres would have generated, so the
 -- name is in review rather than in a catalogue.
@@ -79,25 +81,40 @@
 -- Moderation history keys off `user_id` and is untouched by any of this (§9).
 
 -- ============================================================================
--- RULING 2 — `selected_by`: settled by D-042
+-- RULING 2 — `selected_by`: settled by D-042 item 1, refined by D-043
 -- ============================================================================
 -- The directive was internally inconsistent: §2's DDL comment said
 -- 'scored' | 'exploration' | 'floor'; §4 and D-033 said
 -- 'coverage' | 'discretionary' | 'exploration'. **D-042 item 1 rules that §2's
--- comment is a stale earlier draft and D-033's set is the vocabulary**, CHECK
--- constrained and NOT NULL.
+-- comment is a stale earlier draft and D-033's set is the vocabulary.** D-042's
+-- `NOT NULL` shape is superseded by **D-043**, which is the final resolution:
+-- nullable, no default, with a CHECK conditional on `author_type`.
+--
+-- `contributions` is not agent-only — `author_type` is 'agent' | 'user' — and
+-- this vocabulary names agent ROUTING PASSES. A blanket NOT NULL would force
+-- every human reply to claim a pass nobody ran, and every eval grouping by this
+-- column would then count that reply as a coverage pick: it would inflate
+-- exactly the metric the constraint exists to protect. So a human row is
+-- honestly NULL.
+--
+-- The conditional form is stronger than a plain NOT NULL in both directions:
+--   * an agent insert that omits the value still fails at insert time (23514
+--     rather than 23502) — the turn worker must always say how it was picked;
+--   * a human insert CLAIMING a routing pass also fails, which a plain NOT NULL
+--     would have accepted silently.
+-- Consequently an eval query never needs an `author_type` filter to trust this
+-- column: non-null means routed, full stop.
 --
 -- **This column deliberately carries a CHECK, overriding the D-013 house style
 -- of naming enum-like values in a comment and validating in the service layer.**
--- D-042 is the newer decision and names this column specifically: `selected_by`
--- is the field every routing eval groups by, so a typo'd value is not a bad row,
--- it is a silently wrong measurement of how the product picks who speaks.
--- D-013 still governs every other enum-like text column in the schema.
+-- D-042/D-043 are the newer decisions and name this column specifically:
+-- `selected_by` is the field every routing eval groups by, so a wrong value is
+-- not a bad row, it is a silently wrong measurement of how the product picks
+-- who speaks. D-013 still governs every other enum-like text column here.
 --
--- `DEFAULT 'coverage'` exists only to satisfy the pre-routing rows that already
--- exist in dev, and is DROPPED in the same statement block below. The turn
--- worker must write the value explicitly on every insert; a missing write must
--- fail at insert time rather than quietly record a coverage pick.
+-- **No DEFAULT, ever** (D-043 forecloses one). Rows that predate routing are
+-- handled by the one-shot backfill below, not by a default that would outlive
+-- the migration.
 
 -- ============================================================================
 -- JUDGMENT 3 — `avatar_seed` has no DEFAULT, and cannot have one
@@ -177,21 +194,39 @@ ALTER TABLE contributions
   -- `specific_criticism`. jsonb, written with sql.json — never a stringified
   -- value into a cast (see jsonb-double-encode-guard.test.ts).
   ADD COLUMN IF NOT EXISTS self_check           jsonb,
-  -- Which routing pass picked this agent for this chapter (D-033 vocabulary,
-  -- ruled by D-042 item 1). CHECK-constrained on purpose — the one column in
-  -- this schema that overrides D-013, because every routing eval groups by it
-  -- and a typo'd value is a wrong measurement rather than a bad row. The
-  -- DEFAULT below exists only to satisfy pre-routing rows and is dropped
-  -- immediately; see RULING 2.
-  ADD COLUMN IF NOT EXISTS selected_by          text     NOT NULL DEFAULT 'coverage'
-    CONSTRAINT contributions_selected_by_check
-    CHECK (selected_by IN ('coverage', 'discretionary', 'exploration'));
+  -- Which routing pass picked this agent for this chapter (D-033 vocabulary;
+  -- D-042 item 1 as refined by D-043). Nullable, no default, and constrained
+  -- against `author_type` below — a human's reply was routed by nobody and says
+  -- so. See RULING 2.
+  ADD COLUMN IF NOT EXISTS selected_by          text;
 
--- D-042: the turn worker writes `selected_by` explicitly on every insert. With
--- the default gone, forgetting to is a not-null violation at insert time rather
--- than a row that quietly claims it was a coverage pick. Idempotent — dropping
--- an absent default is a no-op.
-ALTER TABLE contributions ALTER COLUMN selected_by DROP DEFAULT;
+-- Existing rows first, constraint second — the reverse order fails on any
+-- database that already holds agent contributions (all of dev does). Every
+-- contribution written before routing existed was picked by the single-pass
+-- scorer that coverage replaced, so 'coverage' is the honest reading; human
+-- rows are left NULL, which is what they always were.
+UPDATE contributions SET selected_by = 'coverage'
+ WHERE author_type = 'agent' AND selected_by IS NULL;
+
+-- D-043's conditional CHECK. A table constraint, not a column one: it reads two
+-- columns. Guarded rather than `IF NOT EXISTS` because Postgres has no such form
+-- for ADD CONSTRAINT — the guard is what makes re-running this file a no-op.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'contributions'::regclass
+       AND conname  = 'contributions_selected_by_check'
+  ) THEN
+    ALTER TABLE contributions
+      ADD CONSTRAINT contributions_selected_by_check
+      CHECK (
+        (author_type = 'agent') = (selected_by IS NOT NULL)
+        AND (selected_by IS NULL
+             OR selected_by IN ('coverage', 'discretionary', 'exploration'))
+      );
+  END IF;
+END $$;
 
 -- The eval attribution scan: one agent, one persona version, newest first.
 -- Distinct from `contributions_agent_id_created_at_idx` (0004), which cannot

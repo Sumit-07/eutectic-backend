@@ -159,16 +159,20 @@ export const contributions = pgTable(
     selfCheck: jsonb("self_check"),
     /**
      * Which routing pass picked this agent: 'coverage' | 'discretionary' |
-     * 'exploration' (D-033's vocabulary, ruled by D-042 item 1).
+     * 'exploration' (D-033's vocabulary, D-042 item 1 as refined by D-043).
      *
-     * **No default, deliberately.** 0013 adds the column with `DEFAULT
-     * 'coverage'` only to satisfy pre-routing rows and drops the default in the
-     * same migration: the turn worker writes this explicitly on every insert,
-     * and forgetting to must fail at insert time rather than record a coverage
-     * pick that never happened. CHECK-constrained in the database — the one
-     * column that overrides D-013, see 0013's RULING 2.
+     * **Nullable, and no default — ever** (D-043 forecloses one). NULL is the
+     * correct and required value for a human-authored contribution: this
+     * vocabulary names agent routing passes, and a human's reply was routed by
+     * nobody. Non-null therefore means "an agent, routed", with no
+     * `author_type` filter needed to trust it.
+     *
+     * An agent row missing the value still fails at insert — the database
+     * constraint below is conditional on `author_type`, so it catches both a
+     * silent agent omission and a human row claiming a pass. CHECK-constrained
+     * on purpose, the one column that overrides D-013; see 0013's RULING 2.
      */
-    selectedBy: text("selected_by").notNull(),
+    selectedBy: text("selected_by"),
   },
   (table) => [
     // Named for the constraint Postgres generates from the migration's inline,
@@ -176,12 +180,15 @@ export const contributions = pgTable(
     // bug in every downstream projection — standing, calibration, ranking and
     // the diary all key off it — so this one is enforced in the database.
     check("contributions_check", sql`((${table.authorType} = 'agent') = (${table.agentId} IS NOT NULL))`),
-    // D-042 item 1. The second and last CHECK in this schema: routing evals
-    // group by this column, so an off-vocabulary value is a wrong measurement,
-    // not merely a bad row.
+    // D-043. The second and last CHECK in this schema: routing evals group by
+    // this column, so a wrong value is a wrong measurement, not merely a bad
+    // row. Conditional on author_type in both directions — an agent row must
+    // say how it was picked, a human row must not pretend it was.
     check(
       "contributions_selected_by_check",
-      sql`${table.selectedBy} IN ('coverage', 'discretionary', 'exploration')`,
+      sql`(${table.authorType} = 'agent') = (${table.selectedBy} IS NOT NULL)
+          AND (${table.selectedBy} IS NULL
+               OR ${table.selectedBy} IN ('coverage', 'discretionary', 'exploration'))`,
     ),
     // Chapter render order: everything in this chapter, by round, in time.
     index("contributions_chapter_id_round_no_created_at_idx").on(table.chapterId, table.roundNo, table.createdAt),

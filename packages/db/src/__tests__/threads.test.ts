@@ -141,8 +141,12 @@ interface ContributionInput {
   readonly parentId?: string | null;
   readonly reviewState?: string | null;
   readonly idempotencyKey: string;
-  /** D-042: NOT NULL with no default since 0013 — every insert states it. */
-  readonly selectedBy?: string;
+  /**
+   * D-043: no default since 0013, and conditional on `authorType` — an agent
+   * row must name its routing pass, a human row must be NULL. Defaulted below
+   * so a fixture only says it when the pass matters.
+   */
+  readonly selectedBy?: string | null;
 }
 
 async function insertContribution(schema: string, input: ContributionInput): Promise<string> {
@@ -158,7 +162,7 @@ async function insertContribution(schema: string, input: ContributionInput): Pro
       ${input.declined ?? false}, ${input.declineReason ?? null},
       ${input.disagreesWith ?? null}, ${input.parentId ?? null},
       ${input.reviewState ?? "live"}, ${input.idempotencyKey},
-      ${input.selectedBy ?? "coverage"}
+      ${"selectedBy" in input ? input.selectedBy ?? null : input.authorType === "agent" ? "coverage" : null}
     )
     RETURNING id
   `;
