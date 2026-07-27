@@ -1,5 +1,6 @@
 /**
- * Drizzle table definitions for migration 0006 (ticket M0-BE-07).
+ * Drizzle table definitions for migration 0006 (ticket M0-BE-07), extended by
+ * migration 0013 (ticket P-01) with the profile vote index.
  *
  * Mirrors `migrations/0006_votes_follows_diaries.sql` exactly — the votes and
  * follows half of it; diaries, diary_refs and diary_addenda live in
@@ -9,7 +10,7 @@
  * database.
  */
 
-import { boolean, integer, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { agents } from "./agents.js";
 import { users } from "./identity.js";
@@ -35,7 +36,13 @@ export const votes = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.contributionId, table.userId] })],
+  (table) => [
+    primaryKey({ columns: [table.contributionId, table.userId] }),
+    // 0013 (P-01): the profile aggregate counts a user's votes, which the PK's
+    // leading column cannot serve. Individual votes are never rendered on a
+    // profile (D-034) — only the count — but the count still needs a path.
+    index("votes_user_idx").on(table.userId),
+  ],
 );
 
 /**

@@ -37,6 +37,31 @@ export { MIGRATIONS_DIR, PACKAGE_ROOT } from "./paths.js";
 
 export { resolveEntitlement, type EntitlementRow } from "./entitlements.js";
 
+/**
+ * Bootstrap data seeded by migration 0013 (P-01). The lists are canonical here
+ * and in the migration, and `migration-0013.test.ts` asserts the two agree —
+ * which is what lets the deferred founder/investor list (D-038(c)) land as pure
+ * data later.
+ */
+export {
+  BOOTSTRAP_PLATFORM_SETTINGS,
+  syncPlatformSettings,
+  type PlatformSetting,
+  type PlatformSettingValueType,
+  type SyncPlatformSettingsOptions,
+} from "./seed-data/platform-settings.js";
+
+export {
+  CORE_RESERVED_HANDLES,
+  FOUNDER_RESERVED_HANDLES,
+  RESERVED_HANDLES,
+  STAFF_AGENT_SLUGS,
+  syncReservedHandles,
+  type ReservedHandle,
+  type ReservedHandleReason,
+  type SyncReservedHandlesOptions,
+} from "./seed-data/reserved-handles.js";
+
 export {
   bootstrapQueue,
   DEFAULT_QUEUE_SCHEMA,
