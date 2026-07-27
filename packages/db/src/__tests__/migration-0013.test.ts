@@ -171,8 +171,8 @@ describe("migration 0013 — provenance, shadow, identity, settings, avatars", (
 
     await sql`
       INSERT INTO ${sql(schema)}.${sql("contributions")}
-        (source_type, author_type, agent_id, body, idempotency_key)
-      VALUES ('post', 'agent', ${agentId}, 'A contribution.', 'p01-provenance-1')
+        (source_type, author_type, agent_id, body, idempotency_key, selected_by)
+      VALUES ('post', 'agent', ${agentId}, 'A contribution.', 'p01-provenance-1', 'coverage')
     `;
 
     const rows = await sql<
@@ -202,7 +202,81 @@ describe("migration 0013 — provenance, shadow, identity, settings, avatars", (
     assert.equal(row.validation_attempts, 1);
     assert.equal(row.judge_score, null, "judge_score is null until a judge runs");
     assert.equal(row.self_check, null, "self_check is null until a structured turn writes one");
-    assert.equal(row.selected_by, "scored", "D-033's value set replaces this default in P-10");
+    assert.equal(row.selected_by, "coverage", "the value the insert wrote, not a default");
+  });
+
+  it("refuses a contribution that does not say which routing pass picked the agent", async () => {
+    const schema = useScratchSchema();
+    await migrate(schema);
+    const agentId = await insertAgent(schema, "grouse");
+
+    // D-042 item 1: 0013 adds selected_by with DEFAULT 'coverage' to satisfy
+    // pre-routing rows and DROPs the default in the same migration. A turn that
+    // forgets to record how it was picked must fail here, loudly, rather than
+    // land a row claiming a coverage pick that never happened.
+    await assert.rejects(
+      () => sql`
+        INSERT INTO ${sql(schema)}.${sql("contributions")}
+          (source_type, author_type, agent_id, body, idempotency_key)
+        VALUES ('post', 'agent', ${agentId}, 'A contribution.', 'p01-selected-by-missing')
+      `,
+      (error: { code?: string; column_name?: string }) => {
+        assert.equal(error.code, "23502", "a missing selected_by is a not-null violation");
+        assert.equal(error.column_name, "selected_by");
+        return true;
+      },
+      "selected_by must have no default after 0013",
+    );
+
+    const remaining = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM ${sql(schema)}.${sql("contributions")}
+    `;
+    assert.equal(remaining[0]?.n, 0, "nothing may be written by a rejected insert");
+  });
+
+  it("constrains selected_by to the D-042 vocabulary and rejects the directive's stale draft values", async () => {
+    const schema = useScratchSchema();
+    await migrate(schema);
+    const agentId = await insertAgent(schema, "sprout");
+
+    // Every routing eval groups by this column, so an off-vocabulary value is a
+    // silently wrong measurement rather than a bad row. D-042 puts a CHECK here
+    // deliberately, overriding D-013 for this one column.
+    for (const rejected of ["scored", "floor", "Coverage", ""]) {
+      await assert.rejects(
+        () => sql`
+          INSERT INTO ${sql(schema)}.${sql("contributions")}
+            (source_type, author_type, agent_id, body, idempotency_key, selected_by)
+          VALUES ('post', 'agent', ${agentId}, 'A contribution.',
+                  ${`p01-selected-by-bad-${rejected}`}, ${rejected})
+        `,
+        (error: { code?: string; constraint_name?: string }) => {
+          assert.equal(error.code, "23514", `'${rejected}' must fail a CHECK, not slip through`);
+          assert.equal(error.constraint_name, "contributions_selected_by_check");
+          return true;
+        },
+        `selected_by must reject '${rejected}'`,
+      );
+    }
+
+    for (const accepted of ["coverage", "discretionary", "exploration"]) {
+      await sql`
+        INSERT INTO ${sql(schema)}.${sql("contributions")}
+          (source_type, author_type, agent_id, body, idempotency_key, selected_by)
+        VALUES ('post', 'agent', ${agentId}, 'A contribution.',
+                ${`p01-selected-by-ok-${accepted}`}, ${accepted})
+      `;
+    }
+
+    const written = await sql<{ selected_by: string }[]>`
+      SELECT selected_by FROM ${sql(schema)}.${sql("contributions")}
+      ORDER BY selected_by
+    `;
+    assert.deepEqual(
+      written.map((r) => r.selected_by),
+      ["coverage", "discretionary", "exploration"],
+      "D-033's three passes, and only those",
+    );
   });
 
   it("stores self_check as a jsonb OBJECT and judge_score as a real", async () => {

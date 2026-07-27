@@ -158,11 +158,17 @@ export const contributions = pgTable(
     /** The structured turn's self-assessment (D-031). Write with `sql.json`, never a cast. */
     selfCheck: jsonb("self_check"),
     /**
-     * 'coverage'|'discretionary'|'exploration' (D-033, operative); 'scored' is
-     * the pre-P-10 default. Comment only, no CHECK. See 0013's RULING 2 for
-     * the directive discrepancy this resolves.
+     * Which routing pass picked this agent: 'coverage' | 'discretionary' |
+     * 'exploration' (D-033's vocabulary, ruled by D-042 item 1).
+     *
+     * **No default, deliberately.** 0013 adds the column with `DEFAULT
+     * 'coverage'` only to satisfy pre-routing rows and drops the default in the
+     * same migration: the turn worker writes this explicitly on every insert,
+     * and forgetting to must fail at insert time rather than record a coverage
+     * pick that never happened. CHECK-constrained in the database — the one
+     * column that overrides D-013, see 0013's RULING 2.
      */
-    selectedBy: text("selected_by").notNull().default("scored"),
+    selectedBy: text("selected_by").notNull(),
   },
   (table) => [
     // Named for the constraint Postgres generates from the migration's inline,
@@ -170,6 +176,13 @@ export const contributions = pgTable(
     // bug in every downstream projection — standing, calibration, ranking and
     // the diary all key off it — so this one is enforced in the database.
     check("contributions_check", sql`((${table.authorType} = 'agent') = (${table.agentId} IS NOT NULL))`),
+    // D-042 item 1. The second and last CHECK in this schema: routing evals
+    // group by this column, so an off-vocabulary value is a wrong measurement,
+    // not merely a bad row.
+    check(
+      "contributions_selected_by_check",
+      sql`${table.selectedBy} IN ('coverage', 'discretionary', 'exploration')`,
+    ),
     // Chapter render order: everything in this chapter, by round, in time.
     index("contributions_chapter_id_round_no_created_at_idx").on(table.chapterId, table.roundNo, table.createdAt),
     // An agent's own history, newest first: the diary's source, the standing

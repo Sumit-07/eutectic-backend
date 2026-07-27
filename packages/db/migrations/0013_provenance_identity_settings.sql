@@ -79,20 +79,25 @@
 -- Moderation history keys off `user_id` and is untouched by any of this (§9).
 
 -- ============================================================================
--- RULING 2 — `selected_by`: which value set is operative
+-- RULING 2 — `selected_by`: settled by D-042
 -- ============================================================================
--- The directive is internally inconsistent. §2's DDL comment says
--- 'scored' | 'exploration' | 'floor'; §4 and D-033 — the later, controlling
--- two-pass routing design — record 'coverage' | 'discretionary' | 'exploration'
--- and §10 measures judge scores across those three. The DDL below is verbatim
--- §2 (`text NOT NULL DEFAULT 'scored'`) because a default is a one-way door for
--- rows written before P-10; the OPERATIVE VALUE SET is D-033's. 'scored' is
--- what a pre-P-10 turn writes, and it means "chosen by the single-pass scorer
--- that existed before two-pass routing" — a value P-10 stops writing and
--- nothing needs to migrate, because it is a truthful record of how those rows
--- were picked. 'floor' is never written: the per-post floor it names was
--- replaced by coverage before any code existed to write it.
--- Comment only, no CHECK (D-013). Flagged to Fable in the PR body.
+-- The directive was internally inconsistent: §2's DDL comment said
+-- 'scored' | 'exploration' | 'floor'; §4 and D-033 said
+-- 'coverage' | 'discretionary' | 'exploration'. **D-042 item 1 rules that §2's
+-- comment is a stale earlier draft and D-033's set is the vocabulary**, CHECK
+-- constrained and NOT NULL.
+--
+-- **This column deliberately carries a CHECK, overriding the D-013 house style
+-- of naming enum-like values in a comment and validating in the service layer.**
+-- D-042 is the newer decision and names this column specifically: `selected_by`
+-- is the field every routing eval groups by, so a typo'd value is not a bad row,
+-- it is a silently wrong measurement of how the product picks who speaks.
+-- D-013 still governs every other enum-like text column in the schema.
+--
+-- `DEFAULT 'coverage'` exists only to satisfy the pre-routing rows that already
+-- exist in dev, and is DROPPED in the same statement block below. The turn
+-- worker must write the value explicitly on every insert; a missing write must
+-- fail at insert time rather than quietly record a coverage pick.
 
 -- ============================================================================
 -- JUDGMENT 3 — `avatar_seed` has no DEFAULT, and cannot have one
@@ -172,9 +177,21 @@ ALTER TABLE contributions
   -- `specific_criticism`. jsonb, written with sql.json — never a stringified
   -- value into a cast (see jsonb-double-encode-guard.test.ts).
   ADD COLUMN IF NOT EXISTS self_check           jsonb,
-  -- 'coverage' | 'discretionary' | 'exploration'  (D-033, operative);
-  -- 'scored' is the pre-P-10 default. See RULING 2. Comment only, no CHECK.
-  ADD COLUMN IF NOT EXISTS selected_by          text NOT NULL DEFAULT 'scored';
+  -- Which routing pass picked this agent for this chapter (D-033 vocabulary,
+  -- ruled by D-042 item 1). CHECK-constrained on purpose — the one column in
+  -- this schema that overrides D-013, because every routing eval groups by it
+  -- and a typo'd value is a wrong measurement rather than a bad row. The
+  -- DEFAULT below exists only to satisfy pre-routing rows and is dropped
+  -- immediately; see RULING 2.
+  ADD COLUMN IF NOT EXISTS selected_by          text     NOT NULL DEFAULT 'coverage'
+    CONSTRAINT contributions_selected_by_check
+    CHECK (selected_by IN ('coverage', 'discretionary', 'exploration'));
+
+-- D-042: the turn worker writes `selected_by` explicitly on every insert. With
+-- the default gone, forgetting to is a not-null violation at insert time rather
+-- than a row that quietly claims it was a coverage pick. Idempotent — dropping
+-- an absent default is a no-op.
+ALTER TABLE contributions ALTER COLUMN selected_by DROP DEFAULT;
 
 -- The eval attribution scan: one agent, one persona version, newest first.
 -- Distinct from `contributions_agent_id_created_at_idx` (0004), which cannot
