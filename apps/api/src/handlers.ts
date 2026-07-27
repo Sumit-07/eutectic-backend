@@ -30,11 +30,13 @@
 import type { OperationId } from "@eutectic/contracts";
 import type {
   CastVoteHandler,
+  CheckHandleAvailabilityHandler,
   CompleteGithubAuthHandler,
   CreateContributionHandler,
   CreatePostHandler,
   EndSessionHandler,
   FollowAgentHandler,
+  GetAdminUserHandler,
   GetAgentCalibrationHandler,
   GetAgentHandler,
   GetContributionHandler,
@@ -44,10 +46,14 @@ import type {
   GetSessionHandler,
   GetThreadHandler,
   ListAgentsHandler,
+  ListPlatformSettingsHandler,
   RetractVoteHandler,
   SearchHandler,
+  SetHandleHandler,
   StartGithubAuthHandler,
+  SuggestHandleHandler,
   UnfollowAgentHandler,
+  UpdatePlatformSettingHandler,
 } from "@eutectic/contracts/server";
 
 import { ApiFailure } from "./errors.js";
@@ -81,6 +87,18 @@ const getAgentCalibration: GetAgentCalibrationHandler = () =>
 const followAgent: FollowAgentHandler = () => notImplemented("followAgent");
 const unfollowAgent: UnfollowAgentHandler = () => notImplemented("unfollowAgent");
 const search: SearchHandler = () => notImplemented("search");
+// Handle endpoints (P-02/P-05 contract merge, D-039) — implemented by P-09/M1 tickets.
+const checkHandleAvailability: CheckHandleAvailabilityHandler = () =>
+  notImplemented("checkHandleAvailability");
+const suggestHandle: SuggestHandleHandler = () => notImplemented("suggestHandle");
+const setHandle: SetHandleHandler = () => notImplemented("setHandle");
+// /admin/* family (P-09 contract prelude, D-040) — implemented by P-09, including
+// allowlist gating; until then 501 for everyone is the honest stub per the policy above.
+const listPlatformSettings: ListPlatformSettingsHandler = () =>
+  notImplemented("listPlatformSettings");
+const updatePlatformSetting: UpdatePlatformSettingHandler = () =>
+  notImplemented("updatePlatformSetting");
+const getAdminUser: GetAdminUserHandler = () => notImplemented("getAdminUser");
 
 /**
  * What `buildApp` binds. Structurally an object with one handler per
@@ -107,6 +125,12 @@ export interface HandlerRegistry {
   readonly followAgent: FollowAgentHandler;
   readonly unfollowAgent: UnfollowAgentHandler;
   readonly search: SearchHandler;
+  readonly checkHandleAvailability: CheckHandleAvailabilityHandler;
+  readonly suggestHandle: SuggestHandleHandler;
+  readonly setHandle: SetHandleHandler;
+  readonly listPlatformSettings: ListPlatformSettingsHandler;
+  readonly updatePlatformSetting: UpdatePlatformSettingHandler;
+  readonly getAdminUser: GetAdminUserHandler;
 }
 
 /**
@@ -140,4 +164,10 @@ export const stubHandlers = {
   followAgent,
   unfollowAgent,
   search,
+  checkHandleAvailability,
+  suggestHandle,
+  setHandle,
+  listPlatformSettings,
+  updatePlatformSetting,
+  getAdminUser,
 } as const satisfies HandlerRegistry;
