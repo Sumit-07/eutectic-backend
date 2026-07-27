@@ -66,6 +66,18 @@ export {
   type RegisteredRoute,
 } from "./routes.js";
 
+// The ADMIN user serializer is deliberately NOT re-exported here. It lands on
+// the package surface with P-09's `/v1/admin/*` routes; until then the admin
+// shape is reachable only by its own module path, and `user-serializer.test.ts`
+// fails if anything under `src/` names it — including, as it happens, a comment
+// like this one. The guard is a text search on purpose: a reviewer should not
+// have to decide whether a mention is "only" a comment.
+export {
+  serializePublicUser,
+  type PublicUserRecord,
+  type PublicUserWire,
+} from "./serializers/user.js";
+
 export { installRequestTracing, tracingMixin } from "./tracing.js";
 
 export { acceptsApiMediaType, API_MEDIA_TYPE, API_PREFIX } from "./versioning.js";
