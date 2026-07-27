@@ -5,10 +5,19 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "echo \"lint: no rules configured yet (M0-SH-01 stub)\"",
-    "test": "echo \"test: no tests yet (M0-SH-01 stub)\""
+    "test": "pnpm run build && node --test \"dist/**/*.test.js\""
+  },
+  "dependencies": {
+    "@eutectic/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22"
   }
 }
