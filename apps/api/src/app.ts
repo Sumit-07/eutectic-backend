@@ -31,12 +31,15 @@ import { randomUUID } from "node:crypto";
 
 import Fastify from "fastify";
 import type { FastifyInstance, FastifyServerOptions } from "fastify";
+import type { SettingsCache, Sql } from "@eutectic/db";
 
+import { createAdminHandlers } from "./admin/handlers.js";
+import { registerAdminGate } from "./auth/admin-gate.js";
 import { ApiFailure, errorEnvelope, isApiFailure } from "./errors.js";
 import type { ErrorCode, ErrorDetail } from "./errors.js";
 import { registerHealthRoutes } from "./health.js";
 import type { HealthCheckOptions } from "./health.js";
-import { stubHandlers } from "./handlers.js";
+import { createHandlers } from "./handlers.js";
 import type { HandlerRegistry } from "./handlers.js";
 import { registerIdempotency } from "./idempotency.js";
 import type { IdempotencyTuning } from "./idempotency.js";
@@ -84,6 +87,37 @@ export interface BuildAppOptions {
    * free to omit them.
    */
   readonly health?: HealthCheckOptions;
+  /**
+   * Everything the `/v1/admin/*` family needs (P-09). OMITTING IT LEAVES THE
+   * ADMIN ROUTES AS `501` STUBS AND INSTALLS NO GATE, which is the only safe
+   * default and is what two existing suites assert about a bare `buildApp()`:
+   * an app with no database cannot resolve a session, and a route that cannot
+   * check who is calling must not answer as though it had.
+   *
+   * `main.ts` always supplies it, so production is never in that state.
+   */
+  readonly admin?: AdminAppOptions;
+}
+
+/** The `/v1/admin/*` wiring. See {@link BuildAppOptions.admin}. */
+export interface AdminAppOptions {
+  /**
+   * The pool the admin family reads and writes through: `sessions` for the
+   * gate, `platform_settings` + `admin_audit` for the settings service (which
+   * needs the POOL type, not a transaction handle — it opens its own), and
+   * `users` for the admin user lookup.
+   */
+  readonly sql: Sql;
+  /**
+   * Allowlisted `users.id`s, parsed once at boot by
+   * `auth/allowlist.ts`. An EMPTY set denies every admin request — see that
+   * module on why there is no "unconfigured means open" branch.
+   */
+  readonly allowlist: ReadonlySet<string>;
+  /** Settings cache view, already namespaced. Omitted means every read hits Postgres. */
+  readonly cache?: SettingsCache;
+  /** Injectable clock, shared by the gate's expiry check and the audit row's timestamp. */
+  readonly now?: () => Date;
 }
 
 /**
@@ -245,6 +279,23 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
 
   // ---------------------------------------------------------------------
+  // The admin gate (P-09) — BEFORE idempotency, and the order matters
+  // ---------------------------------------------------------------------
+  // Fastify runs `preHandler` hooks in registration order, so putting the gate
+  // first means an unauthenticated `PUT /admin/settings/{key}` is rejected
+  // before it can CLAIM an idempotency key. If the order were reversed, a
+  // caller who cannot authenticate could still burn the key a legitimate
+  // admin's retry is about to use, turning their `401` into someone else's
+  // `409`. See `auth/admin-gate.ts`.
+  if (options.admin !== undefined) {
+    registerAdminGate(app, {
+      sql: options.admin.sql,
+      allowlist: options.admin.allowlist,
+      now: options.admin.now,
+    });
+  }
+
+  // ---------------------------------------------------------------------
   // Idempotency (system-design §3)
   // ---------------------------------------------------------------------
   // Registered before the routes, not as a style preference: fastify snapshots
@@ -255,7 +306,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     tuning: options.idempotency,
   });
 
-  registerContractRoutes(app, options.handlers ?? stubHandlers);
+  // An explicit `handlers` option still wins outright — a test that hands in a
+  // full registry gets exactly that registry. Otherwise the admin trio is
+  // composed over the stubs when, and only when, `admin` was supplied.
+  const handlers: HandlerRegistry =
+    options.handlers ??
+    createHandlers(options.admin === undefined ? {} : createAdminHandlers(options.admin));
+
+  registerContractRoutes(app, handlers);
 
   // Outside `/v1`, outside the contract, exempt from Accept negotiation by
   // construction (no `operationId` config — see the hook above). See

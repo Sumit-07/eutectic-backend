@@ -29,6 +29,7 @@ import { createCache } from "@eutectic/cache";
 import { createPool } from "@eutectic/db";
 
 import { buildApp } from "./app.js";
+import { adminAllowlistFromEnv } from "./auth/allowlist.js";
 import { startTracing } from "./instrumentation.js";
 
 startTracing();
@@ -36,7 +37,24 @@ startTracing();
 const pool = createPool();
 const cache = createCache();
 
-const app = buildApp({ pool, health: { db: pool, cache } });
+// Parsed HERE, at boot, before anything listens (P-09). A malformed
+// `ADMIN_USER_IDS` throws out of this line and the process never starts, which
+// is the loud failure `auth/allowlist.ts` argues for — a silently dropped
+// entry would leave a deployment where one of two admins works and nobody
+// finds out until the other one tries. An unset variable is not an error; it
+// is an empty set, and an empty set denies every admin request.
+const adminAllowlist = adminAllowlistFromEnv();
+
+const app = buildApp({
+  pool,
+  health: { db: pool, cache },
+  // The `settings` namespace is composed HERE rather than inside
+  // `packages/db`: that package declares no cache dependency at all (the
+  // `SettingsCache` interface is an injected seam), and the caller composing
+  // several namespaces stays in charge of that composition — the same split
+  // `entitlements.ts` uses.
+  admin: { sql: pool, allowlist: adminAllowlist, cache: cache.namespace("settings") },
+});
 
 const port = Number.parseInt(process.env.API_PORT ?? "4000", 10);
 const host = process.env.API_HOST ?? "127.0.0.1";

@@ -101,8 +101,12 @@ const getAgentCalibration: GetAgentCalibrationHandler = () =>
 const followAgent: FollowAgentHandler = () => notImplemented("followAgent");
 const unfollowAgent: UnfollowAgentHandler = () => notImplemented("unfollowAgent");
 const search: SearchHandler = () => notImplemented("search");
-// /admin/* family (P-09 contract prelude, D-040) — implemented by P-09, including
-// allowlist gating; until then 501 for everyone is the honest stub per the policy above.
+// /admin/* family (P-09 contract prelude, D-040). The stubs below are still the
+// DEFAULT: `buildApp()` with no `admin` option keeps 501 on all three, which is
+// what `route-surface.test.ts` and `idempotency.test.ts` assert about a bare app
+// and what an API process with no database has no business doing otherwise. The
+// real bodies live in `admin/handlers.ts` and are composed in by
+// `createHandlers({ admin })` below — see its doc comment.
 const listPlatformSettings: ListPlatformSettingsHandler = () =>
   notImplemented("listPlatformSettings");
 const updatePlatformSetting: UpdatePlatformSettingHandler = () =>
@@ -180,3 +184,22 @@ export const stubHandlers = {
   updatePlatformSetting,
   getAdminUser,
 } as const satisfies HandlerRegistry;
+
+/**
+ * The registry with real bodies swapped in for whatever a caller can supply
+ * (P-09).
+ *
+ * WHY A COMPOSITION RATHER THAN EDITING `stubHandlers` IN PLACE. The admin
+ * handlers need a Postgres pool; a pool is injected, not opened by this module
+ * (`main.ts` owns every connection lifecycle). So "implemented" is a property
+ * of a particular app instance, not of this file — `buildApp({ admin })` gets
+ * real routes, and `buildApp()` gets the 501s that two existing test suites
+ * assert on. That is the same conditional-capability shape `app.ts` already
+ * uses for the idempotency store (`options.pool === undefined` → no store), and
+ * it keeps the exhaustiveness gate above intact: this function spreads over the
+ * complete registry rather than rebuilding it, so a new operation still has to
+ * be added to `stubHandlers` before anything compiles.
+ */
+export function createHandlers(overrides: Partial<HandlerRegistry> = {}): HandlerRegistry {
+  return { ...stubHandlers, ...overrides };
+}

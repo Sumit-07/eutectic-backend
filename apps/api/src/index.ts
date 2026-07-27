@@ -5,7 +5,42 @@
  * this module starts nothing; the executable is `src/main.ts`.
  */
 
-export { buildApp, type BuildAppOptions } from "./app.js";
+export { buildApp, type AdminAppOptions, type BuildAppOptions } from "./app.js";
+
+/**
+ * The `/v1/admin/*` family (P-09). The handler factory is exported; the admin
+ * user SERIALIZER still is not — see the note further down.
+ */
+export { createAdminHandlers, type AdminHandlerOptions } from "./admin/handlers.js";
+
+export {
+  actingAdmin,
+  requireActingAdmin,
+  runAsActingAdmin,
+  type ActingAdmin,
+} from "./auth/admin-context.js";
+
+export {
+  adminOperations,
+  isAdminPath,
+  registerAdminGate,
+  type AdminGateOptions,
+} from "./auth/admin-gate.js";
+
+export {
+  ADMIN_USER_IDS_ENV,
+  AdminAllowlistError,
+  adminAllowlistFromEnv,
+  isAllowlistedAdmin,
+  parseAdminAllowlist,
+} from "./auth/allowlist.js";
+
+export {
+  hashSessionToken,
+  readCookie,
+  resolveSession,
+  SESSION_COOKIE_NAME,
+} from "./auth/session.js";
 
 export {
   bustEntitlement,
@@ -25,7 +60,12 @@ export {
   type ErrorEnvelope,
 } from "./errors.js";
 
-export { notImplemented, stubHandlers, type HandlerRegistry } from "./handlers.js";
+export {
+  createHandlers,
+  notImplemented,
+  stubHandlers,
+  type HandlerRegistry,
+} from "./handlers.js";
 
 export { registerHealthRoutes, type HealthCheckOptions } from "./health.js";
 
@@ -66,12 +106,15 @@ export {
   type RegisteredRoute,
 } from "./routes.js";
 
-// The ADMIN user serializer is deliberately NOT re-exported here. It lands on
-// the package surface with P-09's `/v1/admin/*` routes; until then the admin
-// shape is reachable only by its own module path, and `user-serializer.test.ts`
-// fails if anything under `src/` names it — including, as it happens, a comment
-// like this one. The guard is a text search on purpose: a reviewer should not
-// have to decide whether a mention is "only" a comment.
+// The ADMIN user serializer is STILL deliberately not re-exported here, even
+// now that P-09 has wired its route. `user-serializer.test.ts`'s containment
+// guard used to require that NOTHING under `src/` named it; P-09 narrowed that
+// to "admin handler code only", which is a narrowing of the exception, not of
+// the invariant — this file is not admin handler code, and putting the admin
+// shape on the package surface would make it importable by anything that
+// depends on `@eutectic/api` without a reviewer noticing. The guard is a text
+// search on purpose, which is why this comment still does not spell the name:
+// a reviewer should not have to decide whether a mention is "only" a comment.
 export {
   serializePublicUser,
   type PublicUserRecord,
