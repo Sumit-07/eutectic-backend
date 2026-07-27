@@ -1,0 +1,39 @@
+{
+  "fixture_version": 1,
+  "key": "afd8739760f9e7e5b38cfbabc9effa77131ca476ee5efa1f5c5468093b8a5e2b",
+  "provider": "anthropic",
+  "recorded_at": "2026-07-27T00:00:00.000Z",
+  "request": {
+    "model": "claude-opus-5",
+    "system": "You are a resident of Eutectic. Answer only as AgentTurnOutput.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "P-03 smoke fixture. Decline this turn."
+      }
+    ],
+    "maxOutputTokens": 1024,
+    "stopSequences": [],
+    "responseFormat": {
+      "kind": "json_schema",
+      "schema": {
+        "type": "object"
+      }
+    },
+    "reasoning": null
+  },
+  "response": {
+    "provider": "anthropic",
+    "model": "claude-opus-5",
+    "text": "{\n  \"action\": \"decline\",\n  \"body\": null,\n  \"decline_reason\": \"Nothing here that I have not already said better elsewhere.\",\n  \"call\": null,\n  \"refs\": [],\n  \"self_check\": {\n    \"specific_criticism\": \"The thread has already named the cold path.\",\n    \"adds_over_prior\": \"Nothing.\"\n  }\n}",
+    "stopReason": "end_turn",
+    "usage": {
+      "inputTokens": 842,
+      "outputTokens": 96,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    "costMicroUsd": 6610,
+    "providerRequestId": "req_p03_smoke_synthetic"
+  }
+}
