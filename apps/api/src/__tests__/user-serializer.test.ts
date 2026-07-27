@@ -241,15 +241,47 @@ describe("the serializers are the only door, and the admin door is shut", () => 
     assert.ok(productionSources.some((path) => path.endsWith("handlers.ts")));
   });
 
-  it("no route or handler reaches for the admin serializer (P-09 wires it, deliberately)", () => {
-    const offenders = productionSources.filter((path) =>
+  /**
+   * P-09 WIRED THE ADMIN ROUTE, SO THIS GUARD CHANGED SHAPE — deliberately,
+   * and in the direction of keeping the invariant rather than retiring it.
+   *
+   * P-02-BE asserted the admin serializer was imported by NOTHING, which was
+   * the strongest statement available while `/v1/admin/*` returned `501`. That
+   * assertion had two halves welded together: "it is contained" and "it is
+   * unused". Only the second one was ever temporary. Now that `GET
+   * /v1/admin/users/{userId}` exists, "unused" is false by design and the
+   * honest guard is the first half alone: the admin shape is assembled in
+   * ADMIN HANDLER CODE and nowhere else.
+   *
+   * The positive assertion below matters as much as the negative one. A
+   * containment test that only checks "no offenders" passes vacuously the day
+   * someone renames the serializer, deletes the import, or moves the admin
+   * handler out of the walk — so this also asserts that the admin handler
+   * really is in there, really does name it, and is the ONLY file that does.
+   */
+  const ADMIN_HANDLERS = join("admin", "handlers.ts");
+
+  it("only admin handler code reaches for the admin serializer", () => {
+    const importers = productionSources.filter((path) =>
       readFileSync(path, "utf8").includes("serializeAdminUser"),
     );
+
     assert.deepStrictEqual(
-      offenders,
-      [],
-      "the admin serializer became reachable outside /v1/admin/* — that is a ticket with a " +
-        "reviewer attached (P-09), not an import",
+      importers.map((path) => path.slice(path.indexOf(join("src", "")))),
+      [join("src", ADMIN_HANDLERS)],
+      "the admin serializer is reachable from outside /v1/admin/* handler code — that is a " +
+        "ticket with a reviewer attached, not an import",
+    );
+  });
+
+  it("the admin handler that is allowed to use it actually exists (the guard is not vacuous)", () => {
+    // Without this, deleting `admin/handlers.ts` would turn the assertion above
+    // into "nothing imports it", which passes for the wrong reason.
+    const adminHandler = productionSources.find((path) => path.endsWith(ADMIN_HANDLERS));
+    assert.ok(adminHandler, "apps/api/src/admin/handlers.ts is missing from the walk");
+    assert.ok(
+      readFileSync(adminHandler, "utf8").includes("serializeAdminUser"),
+      "the admin handler no longer builds its payload through the serializer",
     );
   });
 

@@ -133,10 +133,12 @@ export function serializePublicUser(record: PublicUserRecord): PublicUserWire {
 }
 
 /**
- * The admin view. NOT WIRED TO ANYTHING: no route imports this, and
- * `user-serializer.test.ts` has a guard that fails if one starts to. The
- * `/v1/admin/*` routes land with P-09, and wiring this up is meant to be a
- * deliberate act with a reviewer attached.
+ * The admin view. WIRED TO EXACTLY ONE CALLER: `admin/handlers.ts`, serving
+ * `GET /v1/admin/users/{userId}` (P-09). It used to be wired to nothing, and
+ * `user-serializer.test.ts` guarded that with "imported by no production
+ * file"; the same test now guards "imported ONLY by admin handler code", which
+ * is the invariant that mattered all along — the placeholder half retired the
+ * moment the admin route existed. A second importer fails that test.
  *
  * `github_login` is shown regardless of the opt-in and regardless of deletion
  * — DIRECTIVE §5: "moderation still attaches to a GitHub account someone
