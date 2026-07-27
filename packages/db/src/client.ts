@@ -31,6 +31,18 @@ export type Database = PostgresJsDatabase<Schema>;
  */
 export type { Sql } from "postgres";
 
+/**
+ * "Anything a query can be tagged with" — the pool, a transaction handle, a
+ * reserved connection. Re-exported for the same reason as `Sql` above, and
+ * used by every query function in this package that does NOT need to open its
+ * own transaction (`resolveEntitlement`, `findAdminUser`, the settings reads):
+ * taking `ISql` is what lets a caller run one inside a transaction it already
+ * has. P-09's admin gate is the first consumer outside this package — it reads
+ * `sessions` through whatever handle it is given, and `apps/api` declares no
+ * `postgres` dependency of its own.
+ */
+export type { ISql } from "postgres";
+
 export interface PoolOptions {
   /** Connection string. Defaults to `process.env.DATABASE_URL`. */
   url?: string;
