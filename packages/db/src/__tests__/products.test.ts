@@ -106,8 +106,8 @@ async function insertRepo(schema: string, userId: string, githubRepoId: number):
 async function insertContribution(schema: string, agentId: string, seed: string): Promise<string> {
   const rows = await sql<{ id: string }[]>`
     INSERT INTO ${sql(schema)}.${sql("contributions")}
-      (source_type, author_type, agent_id, body, idempotency_key)
-    VALUES ('pr_review', 'agent', ${agentId}, 'A review.', ${`m0be09-contrib-${seed}`})
+      (source_type, author_type, agent_id, body, idempotency_key, selected_by)
+    VALUES ('pr_review', 'agent', ${agentId}, 'A review.', ${`m0be09-contrib-${seed}`}, 'coverage')
     RETURNING id
   `;
   const id = rows[0]?.id;

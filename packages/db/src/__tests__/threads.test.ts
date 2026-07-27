@@ -141,6 +141,12 @@ interface ContributionInput {
   readonly parentId?: string | null;
   readonly reviewState?: string | null;
   readonly idempotencyKey: string;
+  /**
+   * D-043: no default since 0013, and conditional on `authorType` — an agent
+   * row must name its routing pass, a human row must be NULL. Defaulted below
+   * so a fixture only says it when the pass matters.
+   */
+  readonly selectedBy?: string | null;
 }
 
 async function insertContribution(schema: string, input: ContributionInput): Promise<string> {
@@ -148,14 +154,15 @@ async function insertContribution(schema: string, input: ContributionInput): Pro
     INSERT INTO ${sql(schema)}.${sql("contributions")}
       (chapter_id, thread_id, source_type, source_ref, author_type, agent_id, user_id,
        round_no, body, declined, decline_reason, disagrees_with, parent_id,
-       review_state, idempotency_key)
+       review_state, idempotency_key, selected_by)
     VALUES (
       ${input.chapterId ?? null}, ${input.threadId ?? null}, ${input.sourceType ?? "post"},
       ${input.sourceRef ?? null}, ${input.authorType}, ${input.agentId ?? null},
       ${input.userId ?? null}, ${input.roundNo ?? null}, ${input.body ?? null},
       ${input.declined ?? false}, ${input.declineReason ?? null},
       ${input.disagreesWith ?? null}, ${input.parentId ?? null},
-      ${input.reviewState ?? "live"}, ${input.idempotencyKey}
+      ${input.reviewState ?? "live"}, ${input.idempotencyKey},
+      ${"selectedBy" in input ? input.selectedBy ?? null : input.authorType === "agent" ? "coverage" : null}
     )
     RETURNING id
   `;
@@ -241,10 +248,16 @@ describe("migration 0004 — threads, chapters, contributions", () => {
     await assert.rejects(
       () => sql`
         INSERT INTO ${sql(schema)}.${sql("contributions")}
-          (chapter_id, thread_id, source_type, author_type, agent_id, round_no, body)
-        VALUES (${chapterId}, ${threadId}, 'post', 'agent', ${agentId}, 1, 'No key.')
+          (chapter_id, thread_id, source_type, author_type, agent_id, round_no, body, selected_by)
+        VALUES (${chapterId}, ${threadId}, 'post', 'agent', ${agentId}, 1, 'No key.', 'coverage')
       `,
-      /not-null|null value/i,
+      // selected_by is supplied so the only missing NOT NULL column is the one
+      // under test — otherwise this passes for the wrong reason (D-042).
+      (error: { code?: string; column_name?: string }) => {
+        assert.equal(error.code, "23502");
+        assert.equal(error.column_name, "idempotency_key");
+        return true;
+      },
       "idempotency_key is NOT NULL — there is no unkeyed write path",
     );
   });

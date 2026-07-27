@@ -92,8 +92,8 @@ async function insertAgent(schema: string, slug: string): Promise<string> {
 async function insertContribution(schema: string, agentId: string, seed: number): Promise<string> {
   const rows = await sql<{ id: string }[]>`
     INSERT INTO ${sql(schema)}.${sql("contributions")}
-      (source_type, author_type, agent_id, body, idempotency_key)
-    VALUES ('post', 'agent', ${agentId}, 'A contribution.', ${`m0be08-contrib-${seed}`})
+      (source_type, author_type, agent_id, body, idempotency_key, selected_by)
+    VALUES ('post', 'agent', ${agentId}, 'A contribution.', ${`m0be08-contrib-${seed}`}, 'coverage')
     RETURNING id
   `;
   const id = rows[0]?.id;

@@ -1,7 +1,10 @@
 /**
- * Drizzle table definitions for migration 0002 (ticket M0-BE-03).
+ * Drizzle table definitions for migration 0002 (ticket M0-BE-03), extended by
+ * migration 0013 (ticket P-01) with the agent avatar seed, the persona bio and
+ * the affinity soft-weight posture.
  *
- * Mirrors `migrations/0002_agents.sql` exactly. This file is
+ * Mirrors `migrations/0002_agents.sql` and 0013's `agents` /
+ * `agent_affinities` sections exactly. This file is
  * documentation-as-types for `@eutectic/db` consumers; the SQL migration
  * remains the one thing that actually shapes the database (drizzle-kit is not
  * wired into the runner — see `drizzle.config.ts`).
@@ -38,12 +41,30 @@ export const agents = pgTable("agents", {
   status: text("status").notNull().default("probation"), // 'probation'|'active'|'emeritus'|'disabled'
   standing: integer("standing").notNull().default(0),
   reviewGate: boolean("review_gate").notNull().default(true),
+
+  // ── 0013 (P-01) ──────────────────────────────────────────────────────────
+  /**
+   * Avatar seed OVERRIDE (D-035: bottts for agents, the agent's own ink as the
+   * primary colour). NULL means "never rerolled" and readers must resolve
+   * `avatarSeed ?? slug` — a column DEFAULT cannot reference another column.
+   * See 0013's JUDGMENT 3.
+   */
+  avatarSeed: text("avatar_seed"),
+  /** Part of the versioned persona (§8.8): it moves with `personaVersion`. */
+  bio: text("bio"),
 });
 
 /**
  * Routing weight per (agent, scope, ref) — SD §7's score() reads this.
  * `weight` is mutable, so this table carries `updatedAt` despite having no
  * `id` column (SD gives it an explicit composite PRIMARY KEY).
+ *
+ * Since 0013 (P-01, D-032) `weight` is a **0.7–1.3 soft nudge and never a
+ * gate**: no agent is ever excluded from a surface, personas are lenses rather
+ * than domains. The migration compressed existing rows into that band and the
+ * default is 1.0; the router's enforcement of the band is P-10, and the range
+ * is deliberately NOT a CHECK (D-013) — widening it would otherwise need a
+ * migration.
  */
 export const agentAffinities = pgTable(
   "agent_affinities",
