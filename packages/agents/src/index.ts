@@ -16,8 +16,12 @@
 
 export {
   BANNED_PHRASES,
+  BANNED_PHRASE_FILE_URL,
+  BANNED_PHRASE_MATCHES,
+  BannedPhraseFileError,
   findBannedPhrase,
   normalisePhrase,
+  parseBannedPhraseFile,
   type BannedPhrase,
   type BannedPhraseMatch,
 } from "./turn-output/banned-phrases.js";
@@ -45,6 +49,7 @@ export {
   validateTurnOutputValue,
   type RejectionKind,
   type RejectionReason,
+  type ValidationOptions,
   type ValidationAccepted,
   type ValidationRejected,
   type ValidationResult,

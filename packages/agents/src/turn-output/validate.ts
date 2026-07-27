@@ -49,6 +49,7 @@
  */
 
 import {
+  BANNED_PHRASES,
   findBannedPhrase,
   normalisePhrase,
   type BannedPhrase,
@@ -125,6 +126,21 @@ export interface ValidationRejected {
 }
 
 export type ValidationResult = ValidationAccepted | ValidationRejected;
+
+export interface ValidationOptions {
+  /**
+   * The Layer-2 vocabulary the `self_check_generic` gate compares against.
+   * Defaults to the shipped list, which D-042 item 2 requires to be EMPTY
+   * until the human authors `testing-and-evals.md` §5 — so in production this
+   * gate passes everything today, on purpose.
+   *
+   * Overridable because the mechanism must stay tested while the vocabulary is
+   * empty, and because the M1 turn worker may one day want a per-agent list.
+   * Never a way to relax the SCHEMA layer: nothing in these options can make
+   * an invalid turn valid.
+   */
+  readonly bannedPhrases?: readonly BannedPhrase[];
+}
 
 /** The mechanical layer's own codes, for a caller that wants to count them. */
 const MECHANICAL_REASONS: ReadonlySet<RejectionReason> = new Set<RejectionReason>([
@@ -409,8 +425,19 @@ function checkCrossFields(value: Record<string, unknown>): ValidationRejected | 
  *
  * The SHAPE of `self_check` is still enforced on a decline, and it is still
  * persisted (D-030) — only the content gate is scoped.
+ *
+ * ─── HALF OF THIS GATE IS DORMANT TODAY (D-042 item 2) ──────────────────────
+ *
+ * `self_check_empty` works now: emptiness is decided by normalisation and owes
+ * nothing to a vocabulary. `self_check_generic` cannot fire in production,
+ * because the shipped phrase list is empty by ruling until the human writes
+ * `testing-and-evals.md` §5. The code below is reserved rather than removed —
+ * populating the data file must start it firing with no release.
  */
-function checkSelfCheckContent(value: Record<string, unknown>): ValidationRejected | undefined {
+function checkSelfCheckContent(
+  value: Record<string, unknown>,
+  bannedPhrases: readonly BannedPhrase[],
+): ValidationRejected | undefined {
   if (value["action"] !== "contribute") return undefined;
 
   const selfCheck = value["self_check"] as Record<string, unknown>;
@@ -426,7 +453,7 @@ function checkSelfCheckContent(value: Record<string, unknown>): ValidationReject
     );
   }
 
-  const banned: BannedPhrase | undefined = findBannedPhrase(criticism);
+  const banned: BannedPhrase | undefined = findBannedPhrase(criticism, bannedPhrases);
   if (banned !== undefined) {
     return reject(
       "mechanical_rejection",
@@ -443,7 +470,10 @@ function checkSelfCheckContent(value: Record<string, unknown>): ValidationReject
  * Validate an already-parsed value. Use this when the JSON came from
  * somewhere other than raw model text — a replayed fixture, a stored turn.
  */
-export function validateTurnOutputValue(value: unknown): ValidationResult {
+export function validateTurnOutputValue(
+  value: unknown,
+  options: ValidationOptions = {},
+): ValidationResult {
   if (!isPlainObject(value)) {
     return violation("not_an_object", "", `A turn must be a JSON object; got ${describe(value)}.`);
   }
@@ -477,7 +507,7 @@ export function validateTurnOutputValue(value: unknown): ValidationResult {
 
   // Schema layer clean from here down. Only now does the content gate run —
   // a mechanical rejection is a statement about a well-formed turn.
-  const content = checkSelfCheckContent(value);
+  const content = checkSelfCheckContent(value, options.bannedPhrases ?? BANNED_PHRASES);
   if (content !== undefined) return content;
 
   // Every key checked, no key unchecked: the cast asserts what the code above
@@ -490,7 +520,7 @@ export function validateTurnOutputValue(value: unknown): ValidationResult {
  * The entry point the turn worker calls: raw model text in, a validated
  * `AgentTurnOutput` or a precise rejection out.
  */
-export function validateTurnOutput(raw: string): ValidationResult {
+export function validateTurnOutput(raw: string, options: ValidationOptions = {}): ValidationResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw) as unknown;
@@ -498,5 +528,5 @@ export function validateTurnOutput(raw: string): ValidationResult {
     const message = error instanceof Error ? error.message : String(error);
     return violation("malformed_json", "", `The turn was not valid JSON: ${message}`);
   }
-  return validateTurnOutputValue(parsed);
+  return validateTurnOutputValue(parsed, options);
 }

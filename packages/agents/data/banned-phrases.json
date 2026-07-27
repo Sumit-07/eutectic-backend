@@ -1,0 +1,4 @@
+{
+  "source": "UNPOPULATED. The Layer-2 vocabulary lives in docs/testing-and-evals.md §5, which does not exist yet; D-042 item 2 rules that it is eval taste, human-owned under CLAUDE.md §11, and that no agent may invent it. This file ships wired and empty on purpose. To populate it, add entries to `phrases` and set this string to the section they came from — no code change is required. See packages/agents/src/turn-output/banned-phrases.ts for the entry format and the matching rules.",
+  "phrases": []
+}

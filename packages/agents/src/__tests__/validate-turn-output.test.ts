@@ -28,9 +28,20 @@ import {
   validateTurnOutputValue,
   type RejectionKind,
   type RejectionReason,
+  type ValidationOptions,
   type ValidationRejected,
   type ValidationResult,
 } from "../turn-output/validate.js";
+import { TEST_PHRASES } from "./phrase-fixture.js";
+
+/**
+ * The generic-criticism gate is exercised against an INJECTED fixture, never
+ * the shipped list: D-042 item 2 requires the shipped list to be empty, so a
+ * suite that relied on it would silently stop testing anything. See
+ * `phrase-fixture.ts`. The shipped-empty posture gets its own assertions at
+ * the bottom of the mechanical section.
+ */
+const WITH_FIXTURE: ValidationOptions = { bannedPhrases: TEST_PHRASES };
 
 /** A real uuid shape; nothing in this suite depends on the version nibble. */
 const REF_ID = "8c2b1d4e-5a6f-4b7c-8d9e-0f1a2b3c4d5e";
@@ -107,8 +118,9 @@ function rejects(
   reason: RejectionReason,
   path: string,
   kind: RejectionKind = "schema_violation",
+  options: ValidationOptions = {},
 ): ValidationRejected {
-  const result = validateTurnOutputValue(value);
+  const result = validateTurnOutputValue(value, options);
   assert.equal(result.ok, false, `expected a rejection, got acceptance`);
   assert.ok(!result.ok);
   assert.equal(result.reason, reason, `reason (detail: ${result.detail})`);
@@ -505,12 +517,13 @@ describe("self_check — the MECHANICAL layer (D-031)", () => {
     }
   });
 
-  it("rejects a generic criticism", () => {
+  it("rejects a generic criticism, given a vocabulary", () => {
     rejects(
       withCriticism("N/A"),
       "self_check_generic",
       "self_check.specific_criticism",
       "mechanical_rejection",
+      WITH_FIXTURE,
     );
   });
 
@@ -520,12 +533,27 @@ describe("self_check — the MECHANICAL layer (D-031)", () => {
       "self_check_generic",
       "self_check.specific_criticism",
       "mechanical_rejection",
+      WITH_FIXTURE,
     );
     assert.match(result.detail, /great question/);
   });
 
   it("accepts a specific, falsifiable criticism", () => {
-    accepted(validateTurnOutputValue(withCriticism(SPECIFIC)));
+    accepted(validateTurnOutputValue(withCriticism(SPECIFIC), WITH_FIXTURE));
+  });
+
+  it("passes a generic criticism against the SHIPPED list, which is empty", () => {
+    // D-042 item 2: wired but empty. `self_check_generic` is unreachable in
+    // production until the human writes `testing-and-evals.md` §5, and this
+    // pins that posture at the validator's own surface — the default path,
+    // with no options passed, is what the M1 turn worker will call.
+    accepted(validateTurnOutputValue(withCriticism("N/A")));
+    accepted(validateTurnOutputValue(withCriticism("Great question!")));
+  });
+
+  it("still catches an empty criticism with the shipped list", () => {
+    // The other half of the gate owes nothing to a vocabulary and works today.
+    rejects(withCriticism("   "), "self_check_empty", "self_check.specific_criticism", "mechanical_rejection");
   });
 
   it("runs AFTER the schema layer — a broken shape is never called generic", () => {
@@ -534,7 +562,7 @@ describe("self_check — the MECHANICAL layer (D-031)", () => {
     // wrong way.
     const turn = withCriticism("n/a");
     delete turn["refs"];
-    rejects(turn, "missing_key", "refs");
+    rejects(turn, "missing_key", "refs", "schema_violation", WITH_FIXTURE);
   });
 
   it("does NOT gate a decline's criticism", () => {
@@ -543,6 +571,7 @@ describe("self_check — the MECHANICAL layer (D-031)", () => {
     accepted(
       validateTurnOutputValue(
         decline({ self_check: { specific_criticism: "n/a", adds_over_prior: "" } }),
+        WITH_FIXTURE,
       ),
     );
   });
@@ -553,7 +582,7 @@ describe("self_check — the MECHANICAL layer (D-031)", () => {
     // `testing-and-evals.md` §5, not for the validator.
     accepted(validateTurnOutputValue(contribute({
       self_check: { specific_criticism: SPECIFIC, adds_over_prior: "" },
-    })));
+    }), WITH_FIXTURE));
   });
 });
 
@@ -567,17 +596,27 @@ describe("the rejection taxonomy itself", () => {
     assert.deepEqual([...mechanical], ["self_check_empty", "self_check_generic"]);
   });
 
-  it("never carries a value on a rejection, across every seeded phrase", () => {
-    // Cheap coverage of the whole list: every entry must actually reject
-    // something, so a typo'd phrase cannot sit in the list doing nothing.
-    for (const entry of BANNED_PHRASES) {
+  it("never carries a value on a rejection, across every injected phrase", () => {
+    // Cheap coverage of a whole vocabulary: every entry must actually reject
+    // something, so a typo'd phrase cannot sit in a list doing nothing. Run
+    // against the fixture because the shipped list is empty by ruling; when
+    // the human's list lands, pointing this at it is a one-word change.
+    for (const entry of TEST_PHRASES) {
       const criticism = entry.match === "exact" ? entry.phrase : `${entry.phrase} — and so on.`;
       const result = validateTurnOutputValue(
         contribute({ self_check: { specific_criticism: criticism, adds_over_prior: "x" } }),
+        WITH_FIXTURE,
       );
       assert.ok(!result.ok, `"${entry.phrase}" (${entry.match}) did not reject`);
       assert.equal(result.kind, "mechanical_rejection", entry.phrase);
       assert.ok(!("value" in result));
     }
+  });
+
+  it("reserves self_check_generic even though nothing can reach it today", () => {
+    // D-042 item 2 keeps the code alive: when the vocabulary lands it must
+    // start firing with no release. Reserved, exported, and provably wired.
+    assert.ok((REJECTION_REASONS as readonly string[]).includes("self_check_generic"));
+    assert.deepEqual([...BANNED_PHRASES], []);
   });
 });
