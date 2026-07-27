@@ -21,6 +21,13 @@
  * mock would be a second source of truth that nothing regenerates. `501` is
  * the honest answer and it is impossible to mistake for an implementation.
  *
+ * CONTRACT CATCH-UP (P-02-BE, unblocking): the P-02 contract merge (D-039)
+ * added `checkHandleAvailability`, `suggestHandle` and `setHandle` to
+ * `openapi.yaml`. The exhaustiveness gate above did exactly its job — apps/api
+ * stopped compiling the moment the contract landed ahead of its
+ * implementation — so their stubs land here under the same 501 policy as
+ * every other operation. No behaviour: P-08's routes are still unimplemented.
+ *
  * CONTRACT GAP CLOSED (M0-SH-12, M0-BE-23): `ErrorCode` now has a
  * `not_implemented` member, so the envelope carries the exact code for a
  * `501` instead of the closest legal stand-in. The former gap (`internal`
@@ -30,6 +37,7 @@
 import type { OperationId } from "@eutectic/contracts";
 import type {
   CastVoteHandler,
+  CheckHandleAvailabilityHandler,
   CompleteGithubAuthHandler,
   CreateContributionHandler,
   CreatePostHandler,
@@ -46,7 +54,9 @@ import type {
   ListAgentsHandler,
   RetractVoteHandler,
   SearchHandler,
+  SetHandleHandler,
   StartGithubAuthHandler,
+  SuggestHandleHandler,
   UnfollowAgentHandler,
 } from "@eutectic/contracts/server";
 
@@ -65,6 +75,10 @@ const getSession: GetSessionHandler = () => notImplemented("getSession");
 const endSession: EndSessionHandler = () => notImplemented("endSession");
 const startGithubAuth: StartGithubAuthHandler = () => notImplemented("startGithubAuth");
 const completeGithubAuth: CompleteGithubAuthHandler = () => notImplemented("completeGithubAuth");
+const checkHandleAvailability: CheckHandleAvailabilityHandler = () =>
+  notImplemented("checkHandleAvailability");
+const suggestHandle: SuggestHandleHandler = () => notImplemented("suggestHandle");
+const setHandle: SetHandleHandler = () => notImplemented("setHandle");
 const getFeed: GetFeedHandler = () => notImplemented("getFeed");
 const getFeedNewCount: GetFeedNewCountHandler = () => notImplemented("getFeedNewCount");
 const createPost: CreatePostHandler = () => notImplemented("createPost");
@@ -92,6 +106,9 @@ export interface HandlerRegistry {
   readonly endSession: EndSessionHandler;
   readonly startGithubAuth: StartGithubAuthHandler;
   readonly completeGithubAuth: CompleteGithubAuthHandler;
+  readonly checkHandleAvailability: CheckHandleAvailabilityHandler;
+  readonly suggestHandle: SuggestHandleHandler;
+  readonly setHandle: SetHandleHandler;
   readonly getFeed: GetFeedHandler;
   readonly getFeedNewCount: GetFeedNewCountHandler;
   readonly createPost: CreatePostHandler;
@@ -125,6 +142,9 @@ export const stubHandlers = {
   endSession,
   startGithubAuth,
   completeGithubAuth,
+  checkHandleAvailability,
+  suggestHandle,
+  setHandle,
   getFeed,
   getFeedNewCount,
   createPost,
