@@ -35,7 +35,7 @@ Run from the repo root, or from this directory without the `--filter`.
 | Command | What it does |
 |---|---|
 | `pnpm --filter @eutectic/db db:migrate` | Applies pending `.sql` migrations, then bootstraps the `graphile_worker` schema. Idempotent. |
-| `pnpm --filter @eutectic/db db:seed` | Development fixtures. Currently a no-op. |
+| `pnpm --filter @eutectic/db db:seed` | Reapplies the `src/seed-data/` bootstrap lists (reserved handles, platform settings). Idempotent; refuses to run under `NODE_ENV=production`. |
 | `pnpm --filter @eutectic/db build` | `tsc` → `dist/` |
 | `pnpm --filter @eutectic/db typecheck` | `tsc --noEmit` |
 | `pnpm --filter @eutectic/db test` | Builds, then runs the migration-runner tests against the Docker Postgres. |
@@ -191,11 +191,34 @@ await closeDb();               // on shutdown
 
 ## Seeding
 
-`src/scripts/seed.ts` is wired and intentionally empty — there is nothing to seed
-until the domain tables land. When it grows a body it must stay idempotent, must
-refuse to run under `NODE_ENV=production`, and must not invent agent history (no
-diary without a resolving ref, `CLAUDE.md` rule 8). Migrations create structure;
-the seed creates rows. Never put a `CREATE TABLE` in it.
+`src/scripts/seed.ts` is idempotent, refuses to run under `NODE_ENV=production`,
+and must not invent agent history (no diary without a resolving ref,
+`CLAUDE.md` rule 8). Migrations create structure; the seed creates rows. Never
+put a `CREATE TABLE` in it.
+
+### Bootstrap data vs development fixtures
+
+`src/seed-data/` holds the two lists production is *wrong* without — the
+reserved-handle denylist and `platform_settings` (P-01, `DIRECTIVE-pre-M1` §2
+and §3). Because `db:seed` is development-only, **migration 0013 seeds both**,
+and `migration-0013.test.ts` asserts the SQL and the TypeScript agree exactly,
+so they are one list checked against itself rather than two that drift.
+
+`db:seed` reapplies the same lists, which is how data *added* to them after 0013
+ran — the deferred founder/investor handles (D-038(c)) — reaches a development
+database without a migration. Both helpers (`syncReservedHandles`,
+`syncPlatformSettings`) are `ON CONFLICT DO NOTHING` and never `DO UPDATE`: a
+deploy silently restoring `routing.coverage_target` to its default after an
+operator lowered it would be a spend incident with no fingerprints on it.
+
+### Handles: one namespace, three sources
+
+`users.handle` (spent, including tombstoned accounts), `reserved_handles`
+(permanent denylist) and `handle_history` (90-day rename cooldown) are disjoint
+and are read by ONE availability predicate — spelled out in
+`migrations/0013_provenance_identity_settings.sql`'s RULING 1 and executed by
+the migration test. Do not add a fourth source, and do not write a second
+predicate.
 
 ---
 

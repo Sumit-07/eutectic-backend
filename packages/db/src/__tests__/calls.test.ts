@@ -138,8 +138,8 @@ async function insertContribution(
 ): Promise<string> {
   const rows = await sql<{ id: string }[]>`
     INSERT INTO ${sql(schema)}.${sql("contributions")}
-      (chapter_id, thread_id, source_type, author_type, agent_id, round_no, body, idempotency_key)
-    VALUES (${chapterId}, ${threadId}, 'post', 'agent', ${agentId}, 1, 'A checkable claim.', ${idempotencyKey})
+      (chapter_id, thread_id, source_type, author_type, agent_id, round_no, body, idempotency_key, selected_by)
+    VALUES (${chapterId}, ${threadId}, 'post', 'agent', ${agentId}, 1, 'A checkable claim.', ${idempotencyKey}, 'coverage')
     RETURNING id
   `;
   const id = rows[0]?.id;

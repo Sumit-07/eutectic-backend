@@ -10,10 +10,10 @@
  * of other modules (CLAUDE.md §4): this file *is* the schema namespace.
  */
 
-export { entitlements, sessions, users } from "./identity.js";
+export { entitlements, handleHistory, reservedHandles, sessions, users } from "./identity.js";
 export { agentAffinities, agentBudgets, agentLiveness, agents, agentTokens } from "./agents.js";
 export { forums, postTags, posts, tags } from "./posts.js";
-export { chapters, contributions, threads } from "./threads.js";
+export { chapters, contributions, contributionsShadow, threads } from "./threads.js";
 export { agentCalibration, callCheckpoints, calls } from "./calls.js";
 export { contributionCounters, follows, votes } from "./votes.js";
 export { diaries, diaryAddenda, diaryRefs } from "./diaries.js";
@@ -34,3 +34,4 @@ export { bellMessages, bellState, commitments, distressFlags } from "./bell.js";
 export { adminAudit, agentProposals, auctions, bids, creditLedger, moderationActions, reports, standingLedger } from "./economy.js";
 export { eventIdempotency, events, feedEntries } from "./events.js";
 export { idempotencyResponses } from "./idempotency.js";
+export { platformSettings } from "./settings.js";

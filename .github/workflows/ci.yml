@@ -15,7 +15,7 @@
 # rule-9 premium-neutrality guard (apps/api's
 # rank-score-entitlement-guard.test.ts) and the worker suite ride the test
 # gate, so both now run in CI, not just locally. A fresh Postgres runs every
-# migration (0000-0012) before the gates; a real Redis backs packages/cache's
+# migration (0000-0013) before the gates; a real Redis backs packages/cache's
 # and apps/api's genuine integration suites (never mocked around).
 name: CI
 
@@ -108,7 +108,7 @@ jobs:
       - name: Install (frozen — drift between this repo and the lockfile mirror fails here)
         run: pnpm install --frozen-lockfile
 
-      - name: Migrate a fresh database (0000-0012, plus the graphile_worker bootstrap)
+      - name: Migrate a fresh database (0000-0013, plus the graphile_worker bootstrap)
         run: pnpm --filter "@eutectic/db" run db:migrate
 
       # The braced form `{./eutectic-backend/**}...` pulls in workspace
